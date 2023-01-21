@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 notify = "5.0.0"
+sysinfo = "0.27.7"
