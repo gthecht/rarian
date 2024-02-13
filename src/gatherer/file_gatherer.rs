@@ -2,7 +2,7 @@ extern crate notify;
 use notify::event::*;
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::thread::JoinHandle;
+use std::thread::{spawn, JoinHandle};
 
 use crate::gatherer::file_watcher::watch_dir_thread;
 
@@ -19,11 +19,6 @@ fn create_channel() -> (
     Receiver<Result<notify::Event, notify::Error>>,
 ) {
     return channel();
-}
-
-fn cleanup_thread(thread_ctrl: Sender<bool>, watcher_thread: JoinHandle<()>) {
-    thread_ctrl.send(true).expect("send failed");
-    watcher_thread.join().unwrap();
 }
 
 fn log_file(
@@ -47,27 +42,32 @@ fn log_file(
     }
 }
 
-pub fn file_gatherer(file_path: &str) {
+pub fn file_gatherer(file_path: String) -> (Sender<bool>, JoinHandle<()>) {
     let (tx, rx) = create_channel();
-    let (thread_ctrl, thread_rx) = channel();
-    let path: PathBuf = PathBuf::from(file_path.to_owned());
-    let watcher_thread = watch_dir_thread(path.as_path(), tx, thread_rx);
-
-    loop {
-        match rx.recv() {
-            Ok(rx_event) => {
-                let log = log_file(rx_event);
-                match log {
-                    Ok(tup) => println!("{:?}", tup),
-                    Err(_e) => break,
+    let (notify_ctrl_tx, notify_ctrl_rx) = channel();
+    let path: PathBuf = PathBuf::from(file_path);
+    let file_watcher_thread = watch_dir_thread(path.as_path(), tx, notify_ctrl_rx);
+    spawn(move || {
+        loop {
+            match rx.recv() {
+                Ok(rx_event) => {
+                    let log = log_file(rx_event);
+                    match log {
+                        Ok(tup) => println!("{:?}", tup),
+                        Err(_e) => break,
+                    }
+                }
+                Err(e) => {
+                    println!("rx error: {:?}!", e);
+                    break;
                 }
             }
-            Err(e) => {
-                println!("rx error: {:?}!", e);
-                break;
-            }
         }
-    }
+    });
+    return (notify_ctrl_tx, file_watcher_thread);
+}
 
-    cleanup_thread(thread_ctrl, watcher_thread);
+pub fn cleanup_file_gatherer(thread_ctrl: Sender<bool>, watcher_thread: JoinHandle<()>) {
+    thread_ctrl.send(true).expect("send failed");
+    watcher_thread.join().unwrap();
 }
