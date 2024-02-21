@@ -1,10 +1,14 @@
 mod gatherer;
 
 use crate::gatherer::app_gatherer::monitor_processes;
-use crate::gatherer::file_gatherer::{file_gatherer, cleanup_file_gatherer};
+use crate::gatherer::file_gatherer::file_gatherer;
 
 fn main() {
-    let (notify_ctrl_tx, file_gatherer_thread) = file_gatherer("C:/Users/GiladHecht/workspace/rarian".to_string());
+    let file_paths = vec![
+        "C:/Users/GiladHecht/workspace/rarian".to_string(),
+        "D:/Documents/Obsidian".to_string(),
+    ];
+    let cleanup_file_gatherer = file_gatherer(file_paths);
     monitor_processes();
-    cleanup_file_gatherer(notify_ctrl_tx, file_gatherer_thread);
+    cleanup_file_gatherer();
 }

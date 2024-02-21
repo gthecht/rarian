@@ -54,11 +54,11 @@ fn _send_event_onwards(out_tx: Sender<Result<notify::Event, notify::Error>>, eve
 #[cfg(test)]
 mod file_dir_test {
     use super::*;
+    use crate::gatherer::test_utils::test_utils::*;
     use notify::event::*;
     use std::fs::create_dir_all;
-    use std::thread::sleep;
     use std::sync::mpsc::channel;
-    use crate::gatherer::test_utils::test_utils::*;
+    use std::thread::sleep;
 
     fn create_dir_watcher_and_co(
         test_path: &PathBuf,
@@ -78,7 +78,6 @@ mod file_dir_test {
         thread_ctrl.send(true).expect("send failed");
         watcher_thread.join().unwrap();
     }
-
 
     #[test]
     fn watcher_should_get_path() {
