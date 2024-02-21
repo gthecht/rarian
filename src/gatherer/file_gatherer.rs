@@ -1,12 +1,16 @@
+use serde::Serialize;
+use serde_json;
 extern crate notify;
+use anyhow::{Context, Result};
 use notify::event::*;
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::{spawn, JoinHandle};
 
 use crate::gatherer::file_watcher::watch_dir_thread;
+use crate::gatherer::logger::{FileLogger, Log, LogEvent};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 enum FileEventKind {
     Access,
     Create,
@@ -14,11 +18,24 @@ enum FileEventKind {
     Remove,
 }
 
-fn create_notify_channel() -> (
-    Sender<Result<notify::Event, notify::Error>>,
-    Receiver<Result<notify::Event, notify::Error>>,
-) {
-    return channel();
+#[derive(Debug, Serialize)]
+struct FileEventLog {
+    event_paths: Vec<PathBuf>,
+    event_kind: FileEventKind,
+}
+
+impl FileEventLog {
+    fn new(tupl: (Vec<PathBuf>, FileEventKind)) -> Self {
+        let (event_paths, event_kind) = tupl;
+        FileEventLog { event_paths, event_kind }
+    }
+}
+
+impl LogEvent<FileLogger> for FileEventLog {
+    fn log_event(&self, file_logger: &mut FileLogger) -> Result<()> {
+        let json_string = serde_json::to_string(self).context("json is parsable to string")?;
+        file_logger.log(json_string)
+    }
 }
 
 fn log_file(
@@ -42,7 +59,17 @@ fn log_file(
     }
 }
 
-pub fn file_gatherer(file_paths: Vec<String>) -> impl FnOnce() {
+fn create_notify_channel() -> (
+    Sender<Result<notify::Event, notify::Error>>,
+    Receiver<Result<notify::Event, notify::Error>>,
+) {
+    return channel();
+}
+
+pub fn file_gatherer(file_paths: Vec<String>, log_path: String) -> impl FnOnce() {
+    let log_path: PathBuf = PathBuf::from(log_path).join("files.json");
+    let mut file_logger = FileLogger::new(log_path);
+
     let (notify_tx, notify_rx) = create_notify_channel();
 
     let gatherer_cleanup: Vec<(Sender<bool>, JoinHandle<()>)> = file_paths
@@ -61,7 +88,10 @@ pub fn file_gatherer(file_paths: Vec<String>) -> impl FnOnce() {
             Ok(rx_event) => {
                 let log = log_file(rx_event);
                 match log {
-                    Ok(tup) => println!("{:?}", tup),
+                    Ok(tup) => {
+                        let file_event_log = FileEventLog::new(tup);
+                        file_event_log.log_event(&mut file_logger).expect("log event failed");
+                    },
                     Err(_e) => break,
                 }
             }
