@@ -1,32 +1,71 @@
+use anyhow::{Context, Result};
+use serde::Serialize;
 extern crate sysinfo;
+use super::logger::{FileLogger, Log, LogEvent};
 use active_win_pos_rs::{get_active_window, ActiveWindow};
 use std::path::PathBuf;
 use std::thread::sleep;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use sysinfo::{Pid, ProcessExt, ProcessRefreshKind, System, SystemExt};
+use sysinfo::{Pid, Process, ProcessExt, ProcessRefreshKind, System, SystemExt};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 struct ActiveProcess {
-    active_window: ActiveWindow,
+    title: String,
+    process_path: PathBuf,
+    app_name: String,
+    window_id: String,
     exe: PathBuf,
     process_id: usize,
     parent: Option<usize>,
     start_time: u64,
 }
 
-impl PartialEq for ActiveProcess {
-    fn eq(&self, other: &Self) -> bool {
-        self.process_id == other.process_id
-            && self.active_window == other.active_window
-            && self.active_window.title == other.active_window.title
+impl ActiveProcess {
+    fn new(active_window: ActiveWindow, process: &Process) -> ActiveProcess {
+        let title = active_window.title;
+        let process_path = active_window.process_path;
+        let app_name = active_window.app_name;
+        let window_id = active_window.window_id;
+
+        let process_id: usize = active_window
+            .process_id
+            .try_into()
+            .expect("process should fit into usize");
+        let parent = process.parent().map(|pid| usize::from(pid));
+        let start_time = process.start_time();
+        let exe: PathBuf = process.exe().into();
+        ActiveProcess {
+            title,
+            process_path,
+            app_name,
+            window_id,
+            exe,
+            process_id,
+            parent,
+            start_time,
+        }
     }
 }
 
-#[derive(Debug, Clone)]
+impl PartialEq for ActiveProcess {
+    fn eq(&self, other: &Self) -> bool {
+        self.process_id == other.process_id
+        && self.title == other.title
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
 struct ActiveProcessLog {
     process: ActiveProcess,
     active_start_time: SystemTime,
     active_duration: Duration,
+}
+
+impl LogEvent<FileLogger> for ActiveProcessLog {
+    fn log_event(&self, file_logger: &mut FileLogger) -> Result<()> {
+        let json_string = serde_json::to_string(self).context("json is parsable to string")?;
+        file_logger.log(json_string)
+    }
 }
 
 fn duration() -> Duration {
@@ -54,16 +93,7 @@ fn get_active_process(sys: &System) -> Option<ActiveProcess> {
                 .expect("process should fit into usize");
             match sys.process(Pid::from(process_id)) {
                 Some(active_process) => {
-                    let parent = active_process.parent().map(|pid| usize::from(pid));
-                    let start_time = active_process.start_time();
-                    let exe: PathBuf = active_process.exe().into();
-                    let active_process = ActiveProcess {
-                        active_window,
-                        exe,
-                        process_id,
-                        parent,
-                        start_time,
-                    };
+                    let active_process = ActiveProcess::new(active_window, active_process);
                     return Some(active_process);
                 }
                 None => panic!("cannot find window process"),
@@ -73,7 +103,10 @@ fn get_active_process(sys: &System) -> Option<ActiveProcess> {
     }
 }
 
-pub fn monitor_processes() {
+pub fn monitor_processes(log_path: &str) {
+    let log_path: PathBuf = PathBuf::from(log_path).join("apps.json");
+    let mut file_logger = FileLogger::new(log_path);
+
     let mut sys = init_system();
     let mut active_process_log: Vec<ActiveProcessLog> = Vec::new();
 
@@ -93,12 +126,8 @@ pub fn monitor_processes() {
                         current_process.active_duration = SystemTime::now()
                             .duration_since(current_process.active_start_time)
                             .expect("now is after this process has started");
-                        println!(
-                            "{} \nafter {:?} seconds after starting at {:?}",
-                            current_process.process.active_window.title,
-                            current_process.active_duration,
-                            duration_since_epoch(current_process.active_start_time)
-                        );
+                        current_process.log_event(&mut file_logger).expect("log event failed");
+
                         let new_process = ActiveProcessLog {
                             process: active_process,
                             active_start_time: SystemTime::now(),

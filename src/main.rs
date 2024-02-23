@@ -10,6 +10,6 @@ fn main() {
     ];
     let log_path = "C:/Users/GiladHecht/workspace/.rarian/";
     let cleanup_file_gatherer = file_gatherer(file_paths, log_path);
-    monitor_processes();
+    monitor_processes(log_path);
     cleanup_file_gatherer();
 }
