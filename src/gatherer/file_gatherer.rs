@@ -6,6 +6,7 @@ use notify::event::*;
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::{spawn, JoinHandle};
+use std::time::SystemTime;
 
 use crate::gatherer::file_watcher::watch_dir_thread;
 use crate::gatherer::logger::{FileLogger, Log, LogEvent};
@@ -22,12 +23,14 @@ enum FileEventKind {
 struct FileEventLog {
     event_paths: Vec<PathBuf>,
     event_kind: FileEventKind,
+    timestamp: SystemTime,
 }
 
 impl FileEventLog {
     fn new(tupl: (Vec<PathBuf>, FileEventKind)) -> Self {
         let (event_paths, event_kind) = tupl;
-        FileEventLog { event_paths, event_kind }
+        let timestamp = SystemTime::now();
+        FileEventLog { event_paths, event_kind, timestamp }
     }
 }
 
@@ -66,7 +69,7 @@ fn create_notify_channel() -> (
     return channel();
 }
 
-pub fn file_gatherer(file_paths: Vec<String>, log_path: String) -> impl FnOnce() {
+pub fn file_gatherer(file_paths: Vec<String>, log_path: &str) -> impl FnOnce() {
     let log_path: PathBuf = PathBuf::from(log_path).join("files.json");
     let mut file_logger = FileLogger::new(log_path);
 

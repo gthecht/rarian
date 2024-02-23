@@ -8,7 +8,7 @@ fn main() {
         "C:/Users/GiladHecht/workspace/rarian".to_string(),
         "D:/Documents/Obsidian".to_string(),
     ];
-    let log_path = "C:/Users/GiladHecht/workspace/.rarian/".to_string();
+    let log_path = "C:/Users/GiladHecht/workspace/.rarian/";
     let cleanup_file_gatherer = file_gatherer(file_paths, log_path);
     monitor_processes();
     cleanup_file_gatherer();
