@@ -1,9 +1,10 @@
+extern crate sysinfo;
 use anyhow::{Context, Result};
 use serde::Serialize;
-extern crate sysinfo;
 use super::logger::{FileLogger, Log, LogEvent};
 use active_win_pos_rs::{get_active_window, ActiveWindow};
 use std::path::PathBuf;
+use std::sync::mpsc::{channel, Receiver};
 use std::thread::{sleep, spawn};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use sysinfo::{Pid, Process, ProcessExt, ProcessRefreshKind, System, SystemExt};
@@ -102,11 +103,11 @@ fn get_active_process(sys: &System) -> Option<ActiveProcess> {
     }
 }
 
-fn monitor_processes(mut file_logger: FileLogger) {
+fn monitor_processes(mut file_logger: FileLogger, gatherer_rx: Receiver<bool>) {
     let mut sys = init_system();
     let mut active_process_log: Vec<ActiveProcessLog> = Vec::new();
 
-    loop {
+    while let Err(_) = gatherer_rx.try_recv() {
         sleep(duration());
         sys.refresh_processes_specifics(ProcessRefreshKind::new());
 
@@ -145,14 +146,17 @@ fn monitor_processes(mut file_logger: FileLogger) {
             None => println!("no active process"),
         }
     }
+    println!("process monitor stopping gracefully");
 }
 
 pub fn app_gatherer_thread(log_path: &str) -> impl FnOnce() {
     let log_path: PathBuf = PathBuf::from(log_path).join("apps.json");
     let file_logger = FileLogger::new(log_path);
+    let (gatherer_tx, gatherer_rx) = channel::<bool>();
 
-    let process_monitor_thread_handle = spawn(move || monitor_processes(file_logger));
-    return || {
+    let process_monitor_thread_handle = spawn(move || monitor_processes(file_logger, gatherer_rx));
+    return move || {
+        gatherer_tx.send(true).expect("monitor thread should be running");
         process_monitor_thread_handle.join().unwrap();
     };
 }
