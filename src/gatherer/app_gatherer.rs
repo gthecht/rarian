@@ -6,7 +6,7 @@ use active_win_pos_rs::{get_active_window, ActiveWindow};
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver};
 use std::thread::{sleep, spawn};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime};
 use sysinfo::{Pid, Process, ProcessExt, ProcessRefreshKind, System, SystemExt};
 
 #[derive(Debug, Clone, Serialize)]
@@ -70,12 +70,6 @@ impl LogEvent<FileLogger> for ActiveProcessLog {
 
 fn duration() -> Duration {
     return Duration::from_secs(1);
-}
-
-fn duration_since_epoch(sys_time: SystemTime) -> Duration {
-    sys_time
-        .duration_since(UNIX_EPOCH)
-        .expect("system_time is smaller than unix epoch")
 }
 
 fn init_system() -> System {
