@@ -4,7 +4,7 @@ extern crate sysinfo;
 use super::logger::{FileLogger, Log, LogEvent};
 use active_win_pos_rs::{get_active_window, ActiveWindow};
 use std::path::PathBuf;
-use std::thread::sleep;
+use std::thread::{sleep, spawn};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use sysinfo::{Pid, Process, ProcessExt, ProcessRefreshKind, System, SystemExt};
 
@@ -49,8 +49,7 @@ impl ActiveProcess {
 
 impl PartialEq for ActiveProcess {
     fn eq(&self, other: &Self) -> bool {
-        self.process_id == other.process_id
-        && self.title == other.title
+        self.process_id == other.process_id && self.title == other.title
     }
 }
 
@@ -103,10 +102,7 @@ fn get_active_process(sys: &System) -> Option<ActiveProcess> {
     }
 }
 
-pub fn monitor_processes(log_path: &str) {
-    let log_path: PathBuf = PathBuf::from(log_path).join("apps.json");
-    let mut file_logger = FileLogger::new(log_path);
-
+fn monitor_processes(mut file_logger: FileLogger) {
     let mut sys = init_system();
     let mut active_process_log: Vec<ActiveProcessLog> = Vec::new();
 
@@ -126,7 +122,9 @@ pub fn monitor_processes(log_path: &str) {
                         current_process.active_duration = SystemTime::now()
                             .duration_since(current_process.active_start_time)
                             .expect("now is after this process has started");
-                        current_process.log_event(&mut file_logger).expect("log event failed");
+                        current_process
+                            .log_event(&mut file_logger)
+                            .expect("log event failed");
 
                         let new_process = ActiveProcessLog {
                             process: active_process,
@@ -147,4 +145,14 @@ pub fn monitor_processes(log_path: &str) {
             None => println!("no active process"),
         }
     }
+}
+
+pub fn app_gatherer_thread(log_path: &str) -> impl FnOnce() {
+    let log_path: PathBuf = PathBuf::from(log_path).join("apps.json");
+    let file_logger = FileLogger::new(log_path);
+
+    let process_monitor_thread_handle = spawn(move || monitor_processes(file_logger));
+    return || {
+        process_monitor_thread_handle.join().unwrap();
+    };
 }
