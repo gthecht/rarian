@@ -1,9 +1,9 @@
-mod gatherer;
 mod app;
+mod gatherer;
 
+use crate::app::run_app;
 use crate::gatherer::app_gatherer::app_gatherer_thread;
 use crate::gatherer::file_gatherer::file_gatherer;
-use crate::app::run_app;
 
 fn main() {
     let file_paths = vec![
