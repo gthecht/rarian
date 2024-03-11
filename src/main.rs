@@ -1,4 +1,5 @@
 mod app;
+mod notes;
 mod gatherer;
 
 use crate::app::run_app;

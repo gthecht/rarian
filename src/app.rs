@@ -1,4 +1,5 @@
 use std::io;
+use crate::notes;
 
 #[derive(Debug, Eq, PartialEq)]
 enum ContinueInput {
@@ -22,6 +23,10 @@ impl Action {
 
 fn new_note() -> ContinueInput {
     println!("enter a new note");
+    let note = &mut String::new();
+    let stdin = io::stdin();
+    stdin.read_line(note).expect("failed to read stdin");
+    notes::new_note(&note);
     return ContinueInput::Continue;
 }
 
