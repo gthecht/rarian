@@ -9,13 +9,6 @@ use std::time::SystemTime;
 use crate::gatherer::file_watcher::watch_dir_thread;
 use crate::gatherer::logger::{FileLogger, Log, LogEvent};
 
-fn create_notify_channel() -> (
-    Sender<Result<notify::Event, notify::Error>>,
-    Receiver<Result<notify::Event, notify::Error>>,
-) {
-    return channel();
-}
-
 impl LogEvent<FileLogger> for notify::Event {
     fn log(&self, file_logger: &mut FileLogger) -> Result<()> {
         let timestamp = SystemTime::now();
@@ -27,10 +20,17 @@ impl LogEvent<FileLogger> for notify::Event {
     }
 }
 
+fn create_notify_channel() -> (
+    Sender<Result<notify::Event, notify::Error>>,
+    Receiver<Result<notify::Event, notify::Error>>,
+) {
+    return channel();
+}
+
 fn create_file_watchers(
     file_paths: Vec<String>,
     notify_tx: Sender<Result<notify::Event, notify::Error>>,
-) -> impl FnOnce() {
+) -> Vec<(Sender<bool>, JoinHandle<()>)> {
     let file_watcher_threads: Vec<(Sender<bool>, JoinHandle<()>)> = file_paths
         .into_iter()
         .map(|file_path| {
@@ -41,23 +41,14 @@ fn create_file_watchers(
             return (notify_ctrl_tx, file_watcher_thread);
         })
         .collect();
-
-    let close_file_watchers = move || {
-        for (thread_ctrl, watcher_thread) in file_watcher_threads.into_iter() {
-            thread_ctrl.send(true).expect("send failed");
-            watcher_thread.join().unwrap();
-        }
-    };
-    return close_file_watchers;
+    return file_watcher_threads;
 }
 
-pub fn file_gatherer(file_paths: Vec<String>, log_path: &str) -> impl FnOnce() {
-    let log_path: PathBuf = PathBuf::from(log_path).join("files.json");
+fn create_log_events_thread(
+    notify_rx: Receiver<Result<notify::Event, notify::Error>>,
+    log_path: PathBuf,
+) {
     let mut file_logger = FileLogger::new(log_path);
-
-    let (notify_tx, notify_rx) = create_notify_channel();
-    let close_file_watchers = create_file_watchers(file_paths, notify_tx);
-
     spawn(move || loop {
         match notify_rx.recv() {
             Ok(Ok(file_event)) => file_event.log(&mut file_logger).expect("log event failed"),
@@ -68,6 +59,27 @@ pub fn file_gatherer(file_paths: Vec<String>, log_path: &str) -> impl FnOnce() {
             }
         }
     });
+}
 
-    return close_file_watchers;
+pub struct FileGatherer {
+    file_watcher_threads: Vec<(Sender<bool>, JoinHandle<()>)>,
+}
+
+impl FileGatherer {
+    pub fn new(file_paths: Vec<String>, log_path: &str) -> Self {
+        let log_path: PathBuf = PathBuf::from(log_path).join("files.json");
+        let (notify_tx, notify_rx) = create_notify_channel();
+        let file_watcher_threads = create_file_watchers(file_paths, notify_tx);
+        create_log_events_thread(notify_rx, log_path);
+        Self {
+            file_watcher_threads,
+        }
+    }
+
+    pub fn close(self) {
+        for (thread_ctrl, watcher_thread) in self.file_watcher_threads.into_iter() {
+            thread_ctrl.send(true).expect("send failed");
+            watcher_thread.join().unwrap();
+        }
+    }
 }
