@@ -62,7 +62,7 @@ struct ActiveProcessLog {
 }
 
 impl LogEvent<FileLogger> for ActiveProcessLog {
-    fn log_event(&self, file_logger: &mut FileLogger) -> Result<()> {
+    fn log(&self, file_logger: &mut FileLogger) -> Result<()> {
         let json_string = serde_json::to_string(self).context("json is parsable to string")?;
         file_logger.log(json_string)
     }
@@ -118,7 +118,7 @@ fn monitor_processes(mut file_logger: FileLogger, gatherer_rx: Receiver<bool>) {
                             .duration_since(current_process.active_start_time)
                             .expect("now is after this process has started");
                         current_process
-                            .log_event(&mut file_logger)
+                            .log(&mut file_logger)
                             .expect("log event failed");
 
                         let new_process = ActiveProcessLog {

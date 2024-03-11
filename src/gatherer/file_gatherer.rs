@@ -1,7 +1,6 @@
-use serde::Serialize;
 use serde_json;
 extern crate notify;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::{spawn, JoinHandle};
@@ -17,23 +16,14 @@ fn create_notify_channel() -> (
     return channel();
 }
 
-#[derive(Debug, Serialize)]
-struct FileEventLog {
-    event: notify::Event,
-    timestamp: SystemTime,
-}
-
-impl FileEventLog {
-    fn new(event: notify::Event) -> Self {
+impl LogEvent<FileLogger> for notify::Event {
+    fn log(&self, file_logger: &mut FileLogger) -> Result<()> {
         let timestamp = SystemTime::now();
-        FileEventLog { event, timestamp }
-    }
-}
-
-impl LogEvent<FileLogger> for FileEventLog {
-    fn log_event(&self, file_logger: &mut FileLogger) -> Result<()> {
-        let json_string = serde_json::to_string(self).context("json is parsable to string")?;
-        file_logger.log(json_string)
+        let log_json = serde_json::json!({
+            "event": self,
+            "timestamp": timestamp
+        });
+        file_logger.log(log_json.to_string())
     }
 }
 
@@ -70,14 +60,8 @@ pub fn file_gatherer(file_paths: Vec<String>, log_path: &str) -> impl FnOnce() {
 
     spawn(move || loop {
         match notify_rx.recv() {
-            Ok(Ok(file_event)) => {
-                let log = FileEventLog::new(file_event);
-                log.log_event(&mut file_logger).expect("log event failed");
-            }
-            Ok(Err(e)) => {
-                println!("notify error: {:?}!", e);
-                break;
-            }
+            Ok(Ok(file_event)) => file_event.log(&mut file_logger).expect("log event failed"),
+            Ok(Err(e)) => println!("notify error: {:?}!", e),
             Err(e) => {
                 println!("rx error: {:?}!", e);
                 break;

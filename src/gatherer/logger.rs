@@ -8,7 +8,7 @@ pub trait Log {
 }
 
 pub trait LogEvent<Logger: Log> {
-    fn log_event(&self, logger: &mut Logger) -> Result<()>;
+    fn log(&self, logger: &mut Logger) -> Result<()>;
 }
 
 pub struct FileLogger {
@@ -27,6 +27,6 @@ impl FileLogger {
 
 impl Log for FileLogger {
     fn log(&mut self, msg: String) ->Result<()> {
-        self.file.write_all((msg + ",\n").as_bytes()).context("failed to write msg to file")
+        self.file.write_all((msg + "\n").as_bytes()).context("failed to write msg to file")
     }
 }
