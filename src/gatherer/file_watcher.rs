@@ -8,10 +8,10 @@ fn watch_dir(
     full_path: PathBuf,
     tx: Sender<Result<notify::Event, notify::Error>>,
 ) -> notify::RecommendedWatcher {
-    let mut watcher = RecommendedWatcher::new(tx, Config::default()).unwrap();
+    let mut watcher = RecommendedWatcher::new(tx, Config::default()).expect("watcher creation failed");
     watcher
         .watch(full_path.as_ref(), RecursiveMode::Recursive)
-        .unwrap();
+        .expect("watcher watching failed");
     return watcher;
 }
 
@@ -39,16 +39,6 @@ pub fn watch_dir_thread(
         return;
     });
     return watcher_handle;
-}
-
-fn _do_nothing_with_event(
-    _out_tx: Sender<Result<notify::Event, notify::Error>>,
-    _event: notify::Event,
-) {
-}
-
-fn _send_event_onwards(out_tx: Sender<Result<notify::Event, notify::Error>>, event: notify::Event) {
-    out_tx.send(Ok(event)).expect("send event failed");
 }
 
 #[cfg(test)]
@@ -82,7 +72,7 @@ mod file_dir_test {
     #[test]
     fn watcher_should_get_path() {
         let (test_path, rmdir_thread) = create_test_dir("watcher_should_get_path");
-        watch_dir(
+        let _watcher = watch_dir(
             test_path.as_path().canonicalize().unwrap(),
             create_channel().0,
         );
