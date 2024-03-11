@@ -398,6 +398,7 @@ dependencies = [
  "kqueue",
  "libc",
  "mio",
+ "serde",
  "walkdir",
  "windows-sys 0.45.0",
 ]
