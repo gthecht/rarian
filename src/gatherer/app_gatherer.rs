@@ -4,13 +4,14 @@ use active_win_pos_rs::{get_active_window, ActiveWindow};
 use anyhow::{Context, Result};
 use serde::Serialize;
 use std::path::PathBuf;
-use std::sync::mpsc::{channel, Receiver};
-use std::thread::{sleep, spawn};
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::{Arc, Mutex};
+use std::thread::{sleep, spawn, JoinHandle};
 use std::time::{Duration, SystemTime};
 use sysinfo::{Pid, Process, ProcessExt, ProcessRefreshKind, System, SystemExt};
 
 #[derive(Debug, Clone, Serialize)]
-struct ActiveProcess {
+pub struct ActiveProcess {
     title: String,
     app_name: String,
     window_id: String,
@@ -55,7 +56,7 @@ impl PartialEq for ActiveProcess {
 }
 
 #[derive(Debug, Clone, Serialize)]
-struct ActiveProcessLog {
+pub struct ActiveProcessLog {
     process: ActiveProcess,
     active_start_time: SystemTime,
     active_duration: Duration,
@@ -79,43 +80,51 @@ impl LogEvent<FileLogger> for ActiveProcessLog {
 }
 
 struct ActiveProcessGatherer {
-    current: Option<ActiveProcessLog>,
-    log: Vec<ActiveProcessLog>,
+    current: Arc<Mutex<Option<ActiveProcessLog>>>,
+    log: Arc<Mutex<Vec<ActiveProcessLog>>>,
     file_logger: FileLogger,
 }
 
 impl ActiveProcessGatherer {
-    pub fn new(file_logger: FileLogger) -> Self {
+    pub fn new(
+        current: Arc<Mutex<Option<ActiveProcessLog>>>,
+        log: Arc<Mutex<Vec<ActiveProcessLog>>>,
+        file_logger: FileLogger,
+    ) -> Self {
         Self {
-            current: None,
-            log: Vec::new(),
+            current,
+            log,
             file_logger,
         }
     }
 
     pub fn is_current_process(&self, active_process: &ActiveProcess) -> bool {
-        match &self.current {
+        let current = &*self.current.lock().unwrap();
+        match current {
             Some(current) => current.process == *active_process,
             None => false,
         }
     }
 
     pub fn update_active_duration(&mut self) {
-        if let Some(ref mut current) = self.current {
-            (*current).active_duration = SystemTime::now()
-                .duration_since(current.active_start_time)
+        let mut current_process = self.current.lock().unwrap();
+        if let Some(ref mut current_process) = *current_process {
+            current_process.active_duration = SystemTime::now()
+                .duration_since(current_process.active_start_time)
                 .expect("now is after this process has started");
         }
     }
 
-    pub fn update_current(&mut self, new_process: ActiveProcessLog) {
-        if let Some(ref current) = self.current {
+    pub fn update_current_and_log(&mut self, new_process: ActiveProcessLog) {
+        let mut current_process = self.current.lock().unwrap();
+        if let Some(ref mut current) = *current_process {
             current
                 .log(&mut self.file_logger)
                 .expect("log event failed");
-            self.log.push(current.clone());
+            let mut log = self.log.lock().unwrap();
+            log.push(current.clone());
         }
-        self.current = Some(new_process);
+        *current_process = Some(new_process);
     }
 }
 
@@ -130,37 +139,41 @@ fn init_system() -> System {
 }
 
 fn get_active_process(sys: &System) -> Option<ActiveProcess> {
-    match get_active_window() {
-        Ok(active_window) => {
-            let process_id: usize = active_window
-                .process_id
-                .try_into()
-                .expect("process should fit into usize");
-            match sys.process(Pid::from(process_id)) {
-                Some(active_process) => {
-                    let active_process = ActiveProcess::new(active_window, active_process);
-                    return Some(active_process);
-                }
-                None => panic!("cannot find window process"),
-            };
-        }
-        Err(()) => None,
+    if let Ok(active_window) = get_active_window() {
+        let process_id: usize = active_window
+            .process_id
+            .try_into()
+            .expect("process should fit into usize");
+        match sys.process(Pid::from(process_id)) {
+            Some(active_process) => {
+                let active_process = ActiveProcess::new(active_window, active_process);
+                return Some(active_process);
+            }
+            None => panic!("cannot find window process"),
+        };
+    } else {
+        None
     }
 }
 
-fn monitor_processes(file_logger: FileLogger, gatherer_rx: Receiver<bool>) {
+fn monitor_processes(
+    file_logger: FileLogger,
+    gatherer_rx: Receiver<bool>,
+    current: Arc<Mutex<Option<ActiveProcessLog>>>,
+    log: Arc<Mutex<Vec<ActiveProcessLog>>>,
+) {
     let mut sys = init_system();
-    let mut active_process_gatherer = ActiveProcessGatherer::new(file_logger);
+    let mut active_process_gatherer = ActiveProcessGatherer::new(current, log, file_logger);
 
     while let Err(_) = gatherer_rx.try_recv() {
         sleep(duration());
         sys.refresh_processes_specifics(ProcessRefreshKind::new());
-        
+
         active_process_gatherer.update_active_duration();
         if let Some(active_process) = get_active_process(&sys) {
             if !active_process_gatherer.is_current_process(&active_process) {
                 let new_process = ActiveProcessLog::new(active_process);
-                active_process_gatherer.update_current(new_process);
+                active_process_gatherer.update_current_and_log(new_process);
             }
         } else {
             println!("no active process");
@@ -169,16 +182,52 @@ fn monitor_processes(file_logger: FileLogger, gatherer_rx: Receiver<bool>) {
     println!("process monitor stopping gracefully");
 }
 
-pub fn app_gatherer_thread(log_path: &str) -> impl FnOnce() {
-    let log_path: PathBuf = PathBuf::from(log_path).join("apps.json");
-    let file_logger = FileLogger::new(log_path);
-    let (gatherer_tx, gatherer_rx) = channel::<bool>();
+pub struct AppGatherer {
+    thread_ctrl_tx: Sender<bool>,
+    gatherer_thread: JoinHandle<()>,
+    current: Arc<Mutex<Option<ActiveProcessLog>>>,
+    log: Arc<Mutex<Vec<ActiveProcessLog>>>,
+}
 
-    let process_monitor_thread_handle = spawn(move || monitor_processes(file_logger, gatherer_rx));
-    return move || {
-        gatherer_tx
-            .send(true)
-            .expect("monitor thread should be running");
-        process_monitor_thread_handle.join().unwrap();
-    };
+impl AppGatherer {
+    pub fn new(log_path: &str) -> Self {
+        let log_path: PathBuf = PathBuf::from(log_path).join("apps.json");
+        let file_logger = FileLogger::new(log_path);
+        let (thread_ctrl_tx, thread_ctrl_rx) = channel::<bool>();
+
+        let current = Arc::new(Mutex::new(None));
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let current_clone = Arc::clone(&current);
+        let log_clone = Arc::clone(&log);
+
+        let gatherer_thread = spawn(move || {
+            monitor_processes(
+                file_logger,
+                thread_ctrl_rx,
+                current_clone,
+                log_clone,
+            )
+        });
+        Self {
+            thread_ctrl_tx,
+            gatherer_thread,
+            current,
+            log,
+        }
+    }
+
+    pub fn get_current(&self) -> Option<ActiveProcessLog> {
+        let current = &*self.current.lock().unwrap();
+        return current.clone();
+    }
+
+    pub fn get_log(&self) -> Vec<ActiveProcessLog> {
+        let log = &*self.log.lock().unwrap();
+        return log.clone();
+    }
+
+    pub fn close(self) {
+        self.thread_ctrl_tx.send(true).expect("send failed");
+        self.gatherer_thread.join().unwrap();
+    }
 }
