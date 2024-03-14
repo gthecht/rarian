@@ -14,9 +14,7 @@ fn main() {
     let log_path = "C:/Users/GiladHecht/workspace/.rarian/";
     let file_gatherer = FileGatherer::new(file_paths, log_path);
     let app_gatherer = AppGatherer::new(log_path);
-    run_app();
-    app_gatherer.get_current();
-    app_gatherer.get_log();
+    run_app(&app_gatherer);
     app_gatherer.close();
     file_gatherer.close();
 }

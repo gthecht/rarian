@@ -70,6 +70,10 @@ impl ActiveProcessLog {
             active_duration: Duration::new(0, 0),
         }
     }
+
+    pub fn get_title(&self) -> &str {
+        &self.process.title
+    }
 }
 
 impl LogEvent<FileLogger> for ActiveProcessLog {
