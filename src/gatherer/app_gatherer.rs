@@ -1,8 +1,8 @@
 extern crate sysinfo;
-use anyhow::{Context, Result};
-use serde::Serialize;
 use super::logger::{FileLogger, Log, LogEvent};
 use active_win_pos_rs::{get_active_window, ActiveWindow};
+use anyhow::{Context, Result};
+use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver};
 use std::thread::{sleep, spawn};
@@ -12,10 +12,10 @@ use sysinfo::{Pid, Process, ProcessExt, ProcessRefreshKind, System, SystemExt};
 #[derive(Debug, Clone, Serialize)]
 struct ActiveProcess {
     title: String,
-    process_path: PathBuf,
     app_name: String,
     window_id: String,
     exe: PathBuf,
+    process_path: PathBuf,
     process_id: usize,
     parent: Option<usize>,
     start_time: u64,
@@ -37,10 +37,10 @@ impl ActiveProcess {
         let exe: PathBuf = process.exe().into();
         ActiveProcess {
             title,
-            process_path,
             app_name,
             window_id,
             exe,
+            process_path,
             process_id,
             parent,
             start_time,
@@ -61,10 +61,61 @@ struct ActiveProcessLog {
     active_duration: Duration,
 }
 
+impl ActiveProcessLog {
+    pub fn new(process: ActiveProcess) -> Self {
+        ActiveProcessLog {
+            process,
+            active_start_time: SystemTime::now(),
+            active_duration: Duration::new(0, 0),
+        }
+    }
+}
+
 impl LogEvent<FileLogger> for ActiveProcessLog {
     fn log(&self, file_logger: &mut FileLogger) -> Result<()> {
         let json_string = serde_json::to_string(self).context("json is parsable to string")?;
         file_logger.log(json_string)
+    }
+}
+
+struct ActiveProcessGatherer {
+    current: Option<ActiveProcessLog>,
+    log: Vec<ActiveProcessLog>,
+    file_logger: FileLogger,
+}
+
+impl ActiveProcessGatherer {
+    pub fn new(file_logger: FileLogger) -> Self {
+        Self {
+            current: None,
+            log: Vec::new(),
+            file_logger,
+        }
+    }
+
+    pub fn is_current_process(&self, active_process: &ActiveProcess) -> bool {
+        match &self.current {
+            Some(current) => current.process == *active_process,
+            None => false,
+        }
+    }
+
+    pub fn update_active_duration(&mut self) {
+        if let Some(ref mut current) = self.current {
+            (*current).active_duration = SystemTime::now()
+                .duration_since(current.active_start_time)
+                .expect("now is after this process has started");
+        }
+    }
+
+    pub fn update_current(&mut self, new_process: ActiveProcessLog) {
+        if let Some(ref current) = self.current {
+            current
+                .log(&mut self.file_logger)
+                .expect("log event failed");
+            self.log.push(current.clone());
+        }
+        self.current = Some(new_process);
     }
 }
 
@@ -97,47 +148,22 @@ fn get_active_process(sys: &System) -> Option<ActiveProcess> {
     }
 }
 
-fn monitor_processes(mut file_logger: FileLogger, gatherer_rx: Receiver<bool>) {
+fn monitor_processes(file_logger: FileLogger, gatherer_rx: Receiver<bool>) {
     let mut sys = init_system();
-    let mut active_process_log: Vec<ActiveProcessLog> = Vec::new();
+    let mut active_process_gatherer = ActiveProcessGatherer::new(file_logger);
 
     while let Err(_) = gatherer_rx.try_recv() {
         sleep(duration());
         sys.refresh_processes_specifics(ProcessRefreshKind::new());
-
-        let active_process = get_active_process(&sys);
-        match active_process {
-            Some(active_process) => {
-                if let Some(current_process) = active_process_log.last_mut() {
-                    if current_process.process == active_process {
-                        current_process.active_duration = SystemTime::now()
-                            .duration_since(current_process.active_start_time)
-                            .expect("now is after this process has started");
-                    } else {
-                        current_process.active_duration = SystemTime::now()
-                            .duration_since(current_process.active_start_time)
-                            .expect("now is after this process has started");
-                        current_process
-                            .log(&mut file_logger)
-                            .expect("log event failed");
-
-                        let new_process = ActiveProcessLog {
-                            process: active_process,
-                            active_start_time: SystemTime::now(),
-                            active_duration: Duration::new(0, 0),
-                        };
-                        active_process_log.push(new_process);
-                    }
-                } else {
-                    let new_process = ActiveProcessLog {
-                        process: active_process,
-                        active_start_time: SystemTime::now(),
-                        active_duration: Duration::new(0, 0),
-                    };
-                    active_process_log.push(new_process);
-                }
+        
+        active_process_gatherer.update_active_duration();
+        if let Some(active_process) = get_active_process(&sys) {
+            if !active_process_gatherer.is_current_process(&active_process) {
+                let new_process = ActiveProcessLog::new(active_process);
+                active_process_gatherer.update_current(new_process);
             }
-            None => println!("no active process"),
+        } else {
+            println!("no active process");
         }
     }
     println!("process monitor stopping gracefully");
@@ -150,7 +176,9 @@ pub fn app_gatherer_thread(log_path: &str) -> impl FnOnce() {
 
     let process_monitor_thread_handle = spawn(move || monitor_processes(file_logger, gatherer_rx));
     return move || {
-        gatherer_tx.send(true).expect("monitor thread should be running");
+        gatherer_tx
+            .send(true)
+            .expect("monitor thread should be running");
         process_monitor_thread_handle.join().unwrap();
     };
 }
