@@ -1,5 +1,5 @@
 use crate::{gatherer::app_gatherer::AppGatherer, notes};
-use std::io;
+use std::{fmt::Display, io};
 
 #[derive(Debug, Eq, PartialEq)]
 enum ContinueInput {
@@ -21,12 +21,43 @@ impl<'a> Action<'a> {
     }
 }
 
-fn build_input_message(actions: &[Action]) -> String {
-    let mut message = String::from("Pick an option:\n");
-    actions.iter().enumerate().for_each(|(index, action)| {
-        message += &format!("{}. {}\n", index, action.name);
+impl<'a> Display for Action<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)
+    }
+}
+
+fn build_input_message<T>(choises: &[T]) -> String
+where
+    T: Display,
+{
+    let mut message = String::from("Choose an option:\n");
+    choises.iter().enumerate().for_each(|(index, choise)| {
+        message += &format!("{}. {}\n", index, choise);
     });
     message.to_string()
+}
+
+fn choose_with_input<T>(choises: &[T]) -> Result<&T, String>
+where
+    T: Display,
+{
+    let message = build_input_message(choises);
+    println!("{}", message);
+    let input = &mut String::new();
+    let stdin = io::stdin();
+    stdin.read_line(input).expect("failed to read stdin");
+    if let Ok(choise_index) = input.trim().parse::<usize>() {
+        match choises.get(choise_index) {
+            Some(choise) => Ok(choise),
+            None => Err(format!(
+                "Enter an integer corresponding to action. Maximum of {}",
+                choises.len() - 1,
+            )),
+        }
+    } else {
+        Err("couldn't parse to usize, try again".to_string())
+    }
 }
 
 fn new_note() -> ContinueInput {
@@ -48,14 +79,18 @@ fn show_current<'g>(app_gatherer: &'g AppGatherer) -> impl Fn() -> ContinueInput
     }
 }
 
-fn show_last<'g>(app_gatherer: &'g AppGatherer) -> impl Fn() -> ContinueInput + 'g {
+fn show_last<'g>(app_gatherer: &'g AppGatherer, n: Option<usize>) -> impl Fn() -> ContinueInput + 'g {
+    let mut num: usize = 1;
+    if let Some(n) = n {
+        num = n;
+    }
     move || {
         let log = app_gatherer.get_log();
-        if let Some(last) = log.last() {
-            println!("previous: {}", last.get_title());
-        } else {
-            println!("currently there are no apps in log");
-        }
+        let num = std::cmp::max(num, log.len());
+        println!("last {}:", num);
+        log.iter().rev().take(num).for_each(|item| {
+            println!("{}", item.get_title());
+        });
         return ContinueInput::Continue;
     }
 }
@@ -67,30 +102,18 @@ fn quit() -> ContinueInput {
 
 pub fn run_app<'g>(app_gatherer: &'g AppGatherer) {
     let show_current = show_current(app_gatherer);
-    let show_last = show_last(app_gatherer);
+    let show_last = show_last(app_gatherer, Some(5));
     let actions = vec![
         Action::new("new note", &new_note),
         Action::new("show current app", &show_current),
         Action::new("show last app", &show_last),
         Action::new("quit", &quit),
     ];
-    let input_message = build_input_message(&actions);
-    let stdin = io::stdin();
     let mut run = ContinueInput::Continue;
     while run == ContinueInput::Continue {
-        let input = &mut String::new();
-        println!("{}", input_message);
-        stdin.read_line(input).expect("failed to read stdin");
-        if let Ok(action_index) = input.trim().parse::<usize>() {
-            match actions.get(action_index) {
-                Some(action) => run = (action.func)(),
-                None => println!(
-                    "please enter an integer corresponding to action. Maximum of {}",
-                    actions.len() - 1,
-                ),
-            }
-        } else {
-            println!("couldn't parse to usize, try again");
+        match choose_with_input(&actions) {
+            Ok(action) => run = (action.func)(),
+            Err(message) => println!("{}", message),
         }
     }
 }
