@@ -38,7 +38,7 @@ where
     message.to_string()
 }
 
-fn choose_with_input<T>(choises: &[T]) -> Result<&T, String>
+fn choose_with_input<T>(choises: &[T]) -> &T
 where
     T: Display,
 {
@@ -46,27 +46,20 @@ where
     println!("{}", message);
     let input = &mut String::new();
     let stdin = io::stdin();
-    stdin.read_line(input).expect("failed to read stdin");
-    if let Ok(choise_index) = input.trim().parse::<usize>() {
-        match choises.get(choise_index) {
-            Some(choise) => Ok(choise),
-            None => Err(format!(
-                "Enter an integer corresponding to action. Maximum of {}",
-                choises.len() - 1,
-            )),
+    loop {
+        stdin.read_line(input).expect("failed to read stdin");
+        if let Ok(choise_index) = input.trim().parse::<usize>() {
+            match choises.get(choise_index) {
+                Some(choise) => return choise,
+                None => println!(
+                    "Enter an integer corresponding to action. Maximum of {}",
+                    choises.len() - 1,
+                ),
+            }
+        } else {
+            println!("couldn't parse to usize, try again")
         }
-    } else {
-        Err("couldn't parse to usize, try again".to_string())
     }
-}
-
-fn new_note() -> ContinueInput {
-    println!("enter a new note");
-    let note = &mut String::new();
-    let stdin = io::stdin();
-    stdin.read_line(note).expect("failed to read stdin");
-    notes::new_note(&note);
-    return ContinueInput::Continue;
 }
 
 fn show_current<'g>(app_gatherer: &'g AppGatherer) -> impl Fn() -> ContinueInput + 'g {
@@ -79,18 +72,40 @@ fn show_current<'g>(app_gatherer: &'g AppGatherer) -> impl Fn() -> ContinueInput
     }
 }
 
-fn show_last<'g>(app_gatherer: &'g AppGatherer, n: Option<usize>) -> impl Fn() -> ContinueInput + 'g {
+fn show_last<'g>(
+    app_gatherer: &'g AppGatherer,
+    n: Option<usize>,
+) -> impl Fn() -> ContinueInput + 'g {
     let mut num: usize = 1;
     if let Some(n) = n {
         num = n;
     }
     move || {
-        let log = app_gatherer.get_log();
-        let num = std::cmp::max(num, log.len());
-        println!("last {}:", num);
-        log.iter().rev().take(num).for_each(|item| {
+        let last_processes = app_gatherer.get_last_processes(num);
+        println!("last {} windows:", last_processes.len());
+        last_processes.iter().for_each(|item| {
             println!("{}", item.get_title());
         });
+        return ContinueInput::Continue;
+    }
+}
+
+fn new_note<'g>(
+    app_gatherer: &'g AppGatherer,
+    n: Option<usize>,
+) -> impl Fn() -> ContinueInput + 'g {
+    let mut num: usize = 1;
+    if let Some(n) = n {
+        num = n;
+    }
+    move || {
+        println!("enter a new note");
+        let note = &mut String::new();
+        let stdin = io::stdin();
+        stdin.read_line(note).expect("failed to read stdin");
+        let last_processes = app_gatherer.get_last_processes(num);
+        let process = choose_with_input(&last_processes);
+        notes::new_note(&note, process);
         return ContinueInput::Continue;
     }
 }
@@ -103,6 +118,7 @@ fn quit() -> ContinueInput {
 pub fn run_app<'g>(app_gatherer: &'g AppGatherer) {
     let show_current = show_current(app_gatherer);
     let show_last = show_last(app_gatherer, Some(5));
+    let new_note = new_note(app_gatherer, Some(5));
     let actions = vec![
         Action::new("new note", &new_note),
         Action::new("show current app", &show_current),
@@ -111,9 +127,7 @@ pub fn run_app<'g>(app_gatherer: &'g AppGatherer) {
     ];
     let mut run = ContinueInput::Continue;
     while run == ContinueInput::Continue {
-        match choose_with_input(&actions) {
-            Ok(action) => run = (action.func)(),
-            Err(message) => println!("{}", message),
-        }
+        let action = choose_with_input(&actions);
+        run = (action.func)();
     }
 }

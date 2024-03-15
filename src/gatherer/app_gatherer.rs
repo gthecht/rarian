@@ -3,6 +3,7 @@ use super::logger::{FileLogger, Log, LogEvent};
 use active_win_pos_rs::{get_active_window, ActiveWindow};
 use anyhow::{Context, Result};
 use serde::Serialize;
+use std::fmt::Display;
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
@@ -73,6 +74,12 @@ impl ActiveProcessLog {
 
     pub fn get_title(&self) -> &str {
         &self.process.title
+    }
+}
+
+impl Display for ActiveProcessLog {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.get_title())
     }
 }
 
@@ -225,9 +232,13 @@ impl AppGatherer {
         return current.clone();
     }
 
-    pub fn get_log(&self) -> Vec<ActiveProcessLog> {
+    pub fn get_last_processes(&self, n: usize) -> Vec<ActiveProcessLog> {
         let log = &*self.log.lock().unwrap();
-        return log.clone();
+        let num = std::cmp::min(n, log.len());
+        let last_processes: Vec<ActiveProcessLog> = log.iter().rev().take(num).map(|process| {
+            process.clone()
+        }).collect();
+        return last_processes;
     }
 
     pub fn close(self) {
