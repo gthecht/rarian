@@ -9,7 +9,7 @@ use std::path::PathBuf;
 #[derive(Debug, Serialize)]
 struct Note {
     process: String,
-    text: String,
+    pub text: String,
 }
 
 impl Note {
@@ -47,5 +47,12 @@ impl NoteTaker {
         let note = Note::new(text, process);
         note.log(&mut self.file_logger).expect("log event failed");
         self.notes.push(note);
+    }
+
+    pub fn get_app_notes(&self, process_title: &str) -> Vec<&Note> {
+        self.notes
+            .iter()
+            .filter(|note| note.process == process_title)
+            .collect()
     }
 }

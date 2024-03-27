@@ -64,7 +64,9 @@ where
             println!("couldn't parse to usize, try again")
         }
     }
-    choises.get_mut(chosen_index).expect("chosen_index is smaller then vector length")
+    choises
+        .get_mut(chosen_index)
+        .expect("chosen_index is smaller then vector length")
 }
 
 fn new_note<'g>(
@@ -100,6 +102,7 @@ fn show_current<'g>(app_gatherer: &'g AppGatherer) -> impl Fn() -> ContinueInput
 
 fn show_last_apps<'g>(
     app_gatherer: &'g AppGatherer,
+    note_taker: &'g NoteTaker,
     n: Option<usize>,
 ) -> impl Fn() -> ContinueInput + 'g {
     let mut num: usize = 1;
@@ -111,6 +114,10 @@ fn show_last_apps<'g>(
         println!("last {} apps:", last_processes.len());
         last_processes.iter().enumerate().for_each(|(index, item)| {
             println!("{}. {}", index, item.get_title());
+            let app_notes = note_taker.get_app_notes(item.get_title());
+            app_notes.iter().for_each(|note| {
+                println!("  - {}", note.text);
+            })
         });
         println!();
         return ContinueInput::Continue;
@@ -126,7 +133,7 @@ pub fn run_app<'g>(app_gatherer: &'g AppGatherer, log_path: &str) {
     let mut note_taker = NoteTaker::new(log_path);
     let mut new_note = new_note(app_gatherer, &mut note_taker, Some(5));
     let mut show_current = show_current(app_gatherer);
-    let mut show_last = show_last_apps(app_gatherer, Some(5));
+    let mut show_last = show_last_apps(app_gatherer, &note_taker, Some(5));
     let mut quit_binding = quit;
 
     let mut actions = vec![
