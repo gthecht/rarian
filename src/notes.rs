@@ -1,7 +1,7 @@
 use crate::gatherer::{
     app_gatherer::ActiveProcessLog,
-    logger::{FileLogger, Log, LogEvent},
 };
+use crate::cacher::{FileLogger, Log, LogEvent};
 use anyhow::{Context, Result};
 use serde::Serialize;
 use std::path::{Path, PathBuf};

@@ -1,8 +1,9 @@
+use std::fs::create_dir_all;
+
 mod app;
 mod gatherer;
 mod notes;
-
-use std::fs::create_dir_all;
+mod cacher;
 
 use crate::app::run_app;
 use crate::gatherer::app_gatherer::AppGatherer;

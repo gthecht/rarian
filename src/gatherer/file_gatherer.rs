@@ -7,7 +7,7 @@ use std::thread::{spawn, JoinHandle};
 use std::time::SystemTime;
 
 use crate::gatherer::file_watcher::watch_dir_thread;
-use crate::gatherer::logger::{FileLogger, Log, LogEvent};
+use crate::cacher::{FileLogger, Log, LogEvent};
 
 impl LogEvent<FileLogger> for notify::Event {
     fn log(&self, file_logger: &mut FileLogger) -> Result<()> {

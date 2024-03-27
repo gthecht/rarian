@@ -1,5 +1,5 @@
 extern crate sysinfo;
-use super::logger::{FileLogger, Log, LogEvent};
+use crate::cacher::{FileLogger, Log, LogEvent};
 use active_win_pos_rs::{get_active_window, ActiveWindow};
 use anyhow::{Context, Result};
 use itertools::Itertools;
