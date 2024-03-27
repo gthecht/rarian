@@ -108,10 +108,11 @@ fn show_last_apps<'g>(
     }
     move || {
         let last_processes = app_gatherer.get_last_processes(num);
-        println!("last {} windows:", last_processes.len());
-        last_processes.iter().for_each(|item| {
-            println!("{}", item.get_title());
+        println!("last {} apps:", last_processes.len());
+        last_processes.iter().enumerate().for_each(|(index, item)| {
+            println!("{}. {}", index, item.get_title());
         });
+        println!();
         return ContinueInput::Continue;
     }
 }

@@ -2,6 +2,7 @@ extern crate sysinfo;
 use super::logger::{FileLogger, Log, LogEvent};
 use active_win_pos_rs::{get_active_window, ActiveWindow};
 use anyhow::{Context, Result};
+use itertools::Itertools;
 use serde::Serialize;
 use std::fmt::Display;
 use std::path::PathBuf;
@@ -211,14 +212,8 @@ impl AppGatherer {
         let current_clone = Arc::clone(&current);
         let log_clone = Arc::clone(&log);
 
-        let gatherer_thread = spawn(move || {
-            monitor_processes(
-                file_logger,
-                thread_ctrl_rx,
-                current_clone,
-                log_clone,
-            )
-        });
+        let gatherer_thread =
+            spawn(move || monitor_processes(file_logger, thread_ctrl_rx, current_clone, log_clone));
         Self {
             thread_ctrl_tx,
             gatherer_thread,
@@ -235,9 +230,13 @@ impl AppGatherer {
     pub fn get_last_processes(&self, n: usize) -> Vec<ActiveProcessLog> {
         let log = &*self.log.lock().unwrap();
         let num = std::cmp::min(n, log.len());
-        let last_processes: Vec<ActiveProcessLog> = log.iter().rev().take(num).map(|process| {
-            process.clone()
-        }).collect();
+        let last_processes: Vec<ActiveProcessLog> = log
+            .iter()
+            .rev()
+            .unique_by(|app| app.get_title())
+            .take(num)
+            .map(|process| process.clone())
+            .collect();
         return last_processes;
     }
 
