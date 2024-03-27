@@ -12,8 +12,8 @@ use directories::ProjectDirs;
 
 fn main() {
     let file_paths = vec![
-        "C:/Users/GiladHecht/workspace/rarian".to_string(),
-        "D:/Documents/Obsidian".to_string(),
+        "C:/Users/gdhec/workspace/rarian".to_string(),
+        // "D:/Documents/Obsidian".to_string(),
     ];
     let project_dir = ProjectDirs::from("", "Rarian", "rarian").unwrap();
     let data_path = project_dir.data_dir();
