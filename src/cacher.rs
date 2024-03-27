@@ -3,30 +3,30 @@ use std::io::Write;
 use std::path::PathBuf;
 use anyhow::{Context, Result};
 
-pub trait Log {
-    fn log(&mut self, msg: String) -> Result<()>;
+pub trait Cache {
+    fn cache(&mut self, line: String) -> Result<()>;
 }
 
-pub trait LogEvent<Logger: Log> {
-    fn log(&self, logger: &mut Logger) -> Result<()>;
+pub trait CacheEvent<Cacher: Cache> {
+    fn cache(&self, cacher: &mut Cacher) -> Result<()>;
 }
 
-pub struct FileLogger {
+pub struct FileCacher {
     file: File,
 }
 
-impl FileLogger {
-    pub fn new(path: PathBuf) -> FileLogger {
+impl FileCacher {
+    pub fn new(path: PathBuf) -> FileCacher {
         let try_create_file = OpenOptions::new().append(true).create(true).open(path);
         match try_create_file {
-            Ok(file) => FileLogger { file },
-            Err(err) => panic!("Error creating log file: {:?}", err),
+            Ok(file) => FileCacher { file },
+            Err(err) => panic!("Error creating cache file: {:?}", err),
         }
     }
 }
 
-impl Log for FileLogger {
-    fn log(&mut self, msg: String) ->Result<()> {
-        self.file.write_all((msg + "\n").as_bytes()).context("failed to write msg to file")
+impl Cache for FileCacher {
+    fn cache(&mut self, line: String) ->Result<()> {
+        self.file.write_all((line + "\n").as_bytes()).context("failed to write line to file")
     }
 }

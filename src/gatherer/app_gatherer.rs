@@ -1,5 +1,5 @@
 extern crate sysinfo;
-use crate::cacher::{FileLogger, Log, LogEvent};
+use crate::cacher::{Cache, CacheEvent, FileCacher};
 use active_win_pos_rs::{get_active_window, ActiveWindow};
 use anyhow::{Context, Result};
 use itertools::Itertools;
@@ -58,15 +58,15 @@ impl PartialEq for ActiveProcess {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct ActiveProcessLog {
+pub struct ActiveProcessEvent {
     process: ActiveProcess,
     active_start_time: SystemTime,
     active_duration: Duration,
 }
 
-impl ActiveProcessLog {
+impl ActiveProcessEvent {
     pub fn new(process: ActiveProcess) -> Self {
-        ActiveProcessLog {
+        ActiveProcessEvent {
             process,
             active_start_time: SystemTime::now(),
             active_duration: Duration::new(0, 0),
@@ -78,35 +78,35 @@ impl ActiveProcessLog {
     }
 }
 
-impl Display for ActiveProcessLog {
+impl Display for ActiveProcessEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.get_title())
     }
 }
 
-impl LogEvent<FileLogger> for ActiveProcessLog {
-    fn log(&self, file_logger: &mut FileLogger) -> Result<()> {
+impl CacheEvent<FileCacher> for ActiveProcessEvent {
+    fn cache(&self, cacher: &mut FileCacher) -> Result<()> {
         let json_string = serde_json::to_string(self).context("json is parsable to string")?;
-        file_logger.log(json_string)
+        cacher.cache(json_string)
     }
 }
 
 struct ActiveProcessGatherer {
-    current: Arc<Mutex<Option<ActiveProcessLog>>>,
-    log: Arc<Mutex<Vec<ActiveProcessLog>>>,
-    file_logger: FileLogger,
+    current: Arc<Mutex<Option<ActiveProcessEvent>>>,
+    process_events: Arc<Mutex<Vec<ActiveProcessEvent>>>,
+    cacher: FileCacher,
 }
 
 impl ActiveProcessGatherer {
     pub fn new(
-        current: Arc<Mutex<Option<ActiveProcessLog>>>,
-        log: Arc<Mutex<Vec<ActiveProcessLog>>>,
-        file_logger: FileLogger,
+        current: Arc<Mutex<Option<ActiveProcessEvent>>>,
+        process_events: Arc<Mutex<Vec<ActiveProcessEvent>>>,
+        cacher: FileCacher,
     ) -> Self {
         Self {
             current,
-            log,
-            file_logger,
+            process_events,
+            cacher,
         }
     }
 
@@ -127,14 +127,12 @@ impl ActiveProcessGatherer {
         }
     }
 
-    pub fn update_current_and_log(&mut self, new_process: ActiveProcessLog) {
+    pub fn update_current_and_cache(&mut self, new_process: ActiveProcessEvent) {
         let mut current_process = self.current.lock().unwrap();
         if let Some(ref mut current) = *current_process {
-            current
-                .log(&mut self.file_logger)
-                .expect("log event failed");
-            let mut log = self.log.lock().unwrap();
-            log.push(current.clone());
+            current.cache(&mut self.cacher).expect("cache event failed");
+            let mut process_events = self.process_events.lock().unwrap();
+            process_events.push(current.clone());
         }
         *current_process = Some(new_process);
     }
@@ -169,13 +167,13 @@ fn get_active_process(sys: &System) -> Option<ActiveProcess> {
 }
 
 fn monitor_processes(
-    file_logger: FileLogger,
+    cacher: FileCacher,
     gatherer_rx: Receiver<bool>,
-    current: Arc<Mutex<Option<ActiveProcessLog>>>,
-    log: Arc<Mutex<Vec<ActiveProcessLog>>>,
+    current: Arc<Mutex<Option<ActiveProcessEvent>>>,
+    process_events: Arc<Mutex<Vec<ActiveProcessEvent>>>,
 ) {
     let mut sys = init_system();
-    let mut active_process_gatherer = ActiveProcessGatherer::new(current, log, file_logger);
+    let mut active_process_gatherer = ActiveProcessGatherer::new(current, process_events, cacher);
 
     while let Err(_) = gatherer_rx.try_recv() {
         sleep(duration());
@@ -184,8 +182,8 @@ fn monitor_processes(
         active_process_gatherer.update_active_duration();
         if let Some(active_process) = get_active_process(&sys) {
             if !active_process_gatherer.is_current_process(&active_process) {
-                let new_process = ActiveProcessLog::new(active_process);
-                active_process_gatherer.update_current_and_log(new_process);
+                let new_process = ActiveProcessEvent::new(active_process);
+                active_process_gatherer.update_current_and_cache(new_process);
             }
         } else {
             println!("no active process");
@@ -197,40 +195,41 @@ fn monitor_processes(
 pub struct AppGatherer {
     thread_ctrl_tx: Sender<bool>,
     gatherer_thread: JoinHandle<()>,
-    current: Arc<Mutex<Option<ActiveProcessLog>>>,
-    log: Arc<Mutex<Vec<ActiveProcessLog>>>,
+    current: Arc<Mutex<Option<ActiveProcessEvent>>>,
+    process_events: Arc<Mutex<Vec<ActiveProcessEvent>>>,
 }
 
 impl AppGatherer {
     pub fn new(data_path: &Path) -> Self {
         let data_path: PathBuf = PathBuf::from(data_path).join("apps.json");
-        let file_logger = FileLogger::new(data_path);
+        let cacher = FileCacher::new(data_path);
         let (thread_ctrl_tx, thread_ctrl_rx) = channel::<bool>();
 
         let current = Arc::new(Mutex::new(None));
-        let log = Arc::new(Mutex::new(Vec::new()));
+        let process_events = Arc::new(Mutex::new(Vec::new()));
         let current_clone = Arc::clone(&current);
-        let log_clone = Arc::clone(&log);
+        let process_events_clone = Arc::clone(&process_events);
 
-        let gatherer_thread =
-            spawn(move || monitor_processes(file_logger, thread_ctrl_rx, current_clone, log_clone));
+        let gatherer_thread = spawn(move || {
+            monitor_processes(cacher, thread_ctrl_rx, current_clone, process_events_clone)
+        });
         Self {
             thread_ctrl_tx,
             gatherer_thread,
             current,
-            log,
+            process_events,
         }
     }
 
-    pub fn get_current(&self) -> Option<ActiveProcessLog> {
+    pub fn get_current(&self) -> Option<ActiveProcessEvent> {
         let current = &*self.current.lock().unwrap();
         return current.clone();
     }
 
-    pub fn get_last_processes(&self, n: usize) -> Vec<ActiveProcessLog> {
-        let log = &*self.log.lock().unwrap();
-        let num = std::cmp::min(n, log.len());
-        let last_processes: Vec<ActiveProcessLog> = log
+    pub fn get_last_processes(&self, n: usize) -> Vec<ActiveProcessEvent> {
+        let process_events = &*self.process_events.lock().unwrap();
+        let num = std::cmp::min(n, process_events.len());
+        let last_processes: Vec<ActiveProcessEvent> = process_events
             .iter()
             .rev()
             .unique_by(|app| app.get_title())

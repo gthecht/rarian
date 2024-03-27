@@ -1,7 +1,5 @@
-use crate::gatherer::{
-    app_gatherer::ActiveProcessLog,
-};
-use crate::cacher::{FileLogger, Log, LogEvent};
+use crate::cacher::{Cache, CacheEvent, FileCacher};
+use crate::gatherer::app_gatherer::ActiveProcessEvent;
 use anyhow::{Context, Result};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -13,7 +11,7 @@ pub struct Note {
 }
 
 impl Note {
-    pub fn new(text: &str, process: &ActiveProcessLog) -> Self {
+    pub fn new(text: &str, process: &ActiveProcessEvent) -> Self {
         Self {
             process: process.get_title().to_string(),
             text: text.to_string(),
@@ -21,31 +19,31 @@ impl Note {
     }
 }
 
-impl LogEvent<FileLogger> for Note {
-    fn log(&self, file_logger: &mut FileLogger) -> Result<()> {
+impl CacheEvent<FileCacher> for Note {
+    fn cache(&self, cacher: &mut FileCacher) -> Result<()> {
         let json_string = serde_json::to_string(self).context("json is parsable to string")?;
-        file_logger.log(json_string)
+        cacher.cache(json_string)
     }
 }
 
 pub struct NoteTaker {
-    file_logger: FileLogger,
+    cacher: FileCacher,
     notes: Vec<Note>,
 }
 
 impl NoteTaker {
     pub fn new(data_path: &Path) -> Self {
         let data_path: PathBuf = PathBuf::from(data_path).join("notes.json");
-        let file_logger = FileLogger::new(data_path);
+        let cacher = FileCacher::new(data_path);
         NoteTaker {
-            file_logger,
+            cacher,
             notes: Vec::new(),
         }
     }
 
-    pub fn add_note(&mut self, text: &str, process: &ActiveProcessLog) {
+    pub fn add_note(&mut self, text: &str, process: &ActiveProcessEvent) {
         let note = Note::new(text, process);
-        note.log(&mut self.file_logger).expect("log event failed");
+        note.cache(&mut self.cacher).expect("cache event failed");
         self.notes.push(note);
     }
 

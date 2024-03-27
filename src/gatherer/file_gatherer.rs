@@ -6,17 +6,17 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::{spawn, JoinHandle};
 use std::time::SystemTime;
 
+use crate::cacher::{Cache, CacheEvent, FileCacher};
 use crate::gatherer::file_watcher::watch_dir_thread;
-use crate::cacher::{FileLogger, Log, LogEvent};
 
-impl LogEvent<FileLogger> for notify::Event {
-    fn log(&self, file_logger: &mut FileLogger) -> Result<()> {
+impl CacheEvent<FileCacher> for notify::Event {
+    fn cache(&self, cacher: &mut FileCacher) -> Result<()> {
         let timestamp = SystemTime::now();
-        let log_json = serde_json::json!({
+        let json_cache = serde_json::json!({
             "event": self,
             "timestamp": timestamp
         });
-        file_logger.log(log_json.to_string())
+        cacher.cache(json_cache.to_string())
     }
 }
 
@@ -44,14 +44,14 @@ fn create_file_watchers(
     return file_watcher_threads;
 }
 
-fn create_log_events_thread(
+fn create_caching_thread(
     notify_rx: Receiver<Result<notify::Event, notify::Error>>,
     data_path: PathBuf,
 ) {
-    let mut file_logger = FileLogger::new(data_path);
+    let mut cacher = FileCacher::new(data_path);
     spawn(move || loop {
         match notify_rx.recv() {
-            Ok(Ok(file_event)) => file_event.log(&mut file_logger).expect("log event failed"),
+            Ok(Ok(file_event)) => file_event.cache(&mut cacher).expect("cache event failed"),
             Ok(Err(e)) => println!("notify error: {:?}!", e),
             Err(e) => {
                 println!("rx error: {:?}!", e);
@@ -70,7 +70,7 @@ impl FileGatherer {
         let data_path: PathBuf = PathBuf::from(data_path).join("files.json");
         let (notify_tx, notify_rx) = create_notify_channel();
         let file_watcher_threads = create_file_watchers(file_paths, notify_tx);
-        create_log_events_thread(notify_rx, data_path);
+        create_caching_thread(notify_rx, data_path);
         Self {
             file_watcher_threads,
         }
