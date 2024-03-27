@@ -7,7 +7,7 @@ use serde::Serialize;
 use std::path::PathBuf;
 
 #[derive(Debug, Serialize)]
-struct Note {
+pub struct Note {
     process: String,
     pub text: String,
 }
