@@ -17,7 +17,7 @@ pub struct FileLogger {
 
 impl FileLogger {
     pub fn new(path: PathBuf) -> FileLogger {
-        let try_create_file = OpenOptions::new().write(true).append(true).open(path);
+        let try_create_file = OpenOptions::new().append(true).create(true).open(path);
         match try_create_file {
             Ok(file) => FileLogger { file },
             Err(err) => panic!("Error creating log file: {:?}", err),

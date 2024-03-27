@@ -1,5 +1,5 @@
 use crate::{gatherer::app_gatherer::AppGatherer, notes::NoteTaker};
-use std::{fmt::Display, io};
+use std::{fmt::Display, io, path::Path};
 
 fn build_input_message<T>(choises: &[T]) -> String
 where
@@ -97,8 +97,8 @@ impl Display for Action {
     }
 }
 
-pub fn run_app<'g>(app_gatherer: &AppGatherer, log_path: &str) {
-    let mut note_taker = NoteTaker::new(log_path);
+pub fn run_app<'g>(app_gatherer: &AppGatherer, data_path: &Path) {
+    let mut note_taker = NoteTaker::new(data_path);
     let num: usize = 5;
     use Action::*;
     let mut actions = vec![

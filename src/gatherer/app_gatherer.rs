@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 use itertools::Itertools;
 use serde::Serialize;
 use std::fmt::Display;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::{sleep, spawn, JoinHandle};
@@ -202,9 +202,9 @@ pub struct AppGatherer {
 }
 
 impl AppGatherer {
-    pub fn new(log_path: &str) -> Self {
-        let log_path: PathBuf = PathBuf::from(log_path).join("apps.json");
-        let file_logger = FileLogger::new(log_path);
+    pub fn new(data_path: &Path) -> Self {
+        let data_path: PathBuf = PathBuf::from(data_path).join("apps.json");
+        let file_logger = FileLogger::new(data_path);
         let (thread_ctrl_tx, thread_ctrl_rx) = channel::<bool>();
 
         let current = Arc::new(Mutex::new(None));

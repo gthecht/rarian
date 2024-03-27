@@ -4,7 +4,7 @@ use crate::gatherer::{
 };
 use anyhow::{Context, Result};
 use serde::Serialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Serialize)]
 pub struct Note {
@@ -34,9 +34,9 @@ pub struct NoteTaker {
 }
 
 impl NoteTaker {
-    pub fn new(log_path: &str) -> Self {
-        let log_path: PathBuf = PathBuf::from(log_path).join("notes.json");
-        let file_logger = FileLogger::new(log_path);
+    pub fn new(data_path: &Path) -> Self {
+        let data_path: PathBuf = PathBuf::from(data_path).join("notes.json");
+        let file_logger = FileLogger::new(data_path);
         NoteTaker {
             file_logger,
             notes: Vec::new(),

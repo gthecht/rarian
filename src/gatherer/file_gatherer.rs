@@ -1,7 +1,7 @@
 use serde_json;
 extern crate notify;
 use anyhow::Result;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::{spawn, JoinHandle};
 use std::time::SystemTime;
@@ -46,9 +46,9 @@ fn create_file_watchers(
 
 fn create_log_events_thread(
     notify_rx: Receiver<Result<notify::Event, notify::Error>>,
-    log_path: PathBuf,
+    data_path: PathBuf,
 ) {
-    let mut file_logger = FileLogger::new(log_path);
+    let mut file_logger = FileLogger::new(data_path);
     spawn(move || loop {
         match notify_rx.recv() {
             Ok(Ok(file_event)) => file_event.log(&mut file_logger).expect("log event failed"),
@@ -66,11 +66,11 @@ pub struct FileGatherer {
 }
 
 impl FileGatherer {
-    pub fn new(file_paths: Vec<String>, log_path: &str) -> Self {
-        let log_path: PathBuf = PathBuf::from(log_path).join("files.json");
+    pub fn new(file_paths: Vec<String>, data_path: &Path) -> Self {
+        let data_path: PathBuf = PathBuf::from(data_path).join("files.json");
         let (notify_tx, notify_rx) = create_notify_channel();
         let file_watcher_threads = create_file_watchers(file_paths, notify_tx);
-        create_log_events_thread(notify_rx, log_path);
+        create_log_events_thread(notify_rx, data_path);
         Self {
             file_watcher_threads,
         }
