@@ -51,14 +51,18 @@ pub struct NoteTaker {
 }
 
 impl NoteTaker {
+    fn load_and_parse_notes(cacher: &mut FileCacher) -> Vec<Note> {
+        let notes = Note::load_from_cache(cacher);
+        notes
+            .into_iter()
+            .filter_map(|process_result| process_result.ok())
+            .collect()
+    }
+
     pub fn new(data_path: &Path) -> Self {
         let data_path: PathBuf = PathBuf::from(data_path).join("notes.json");
         let mut cacher = FileCacher::new(data_path);
-        let notes = Note::load_from_cache(&mut cacher);
-        let notes: Vec<Note> = notes
-            .into_iter()
-            .filter_map(|n_result| n_result.ok())
-            .collect();
+        let notes = Self::load_and_parse_notes(&mut cacher);
         let note_taker = NoteTaker { cacher, notes };
         return note_taker;
     }

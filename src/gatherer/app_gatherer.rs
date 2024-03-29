@@ -1,9 +1,9 @@
 extern crate sysinfo;
-use crate::cacher::{Cache, CacheEvent, FileCacher};
+use crate::cacher::{Cache, CacheEvent, CacherLoad, FileCacher, LoadFromCache};
 use active_win_pos_rs::{get_active_window, ActiveWindow};
 use anyhow::{Context, Result};
 use itertools::Itertools;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver, Sender};
@@ -12,7 +12,7 @@ use std::thread::{sleep, spawn, JoinHandle};
 use std::time::{Duration, SystemTime};
 use sysinfo::{Pid, Process, ProcessExt, ProcessRefreshKind, System, SystemExt};
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActiveProcess {
     title: String,
     app_name: String,
@@ -57,7 +57,7 @@ impl PartialEq for ActiveProcess {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActiveProcessEvent {
     process: ActiveProcess,
     active_start_time: SystemTime,
@@ -88,6 +88,31 @@ impl CacheEvent<FileCacher> for ActiveProcessEvent {
     fn cache(&self, cacher: &mut FileCacher) -> Result<()> {
         let json_string = serde_json::to_string(self).context("json is parsable to string")?;
         cacher.cache(json_string)
+    }
+}
+
+impl LoadFromCache<FileCacher> for ActiveProcessEvent {
+    fn deserialize_self(input: &str) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        serde_json::from_str::<Self>(input).context("Failed to parse ActiveProcessEvent")
+    }
+
+    fn load_from_cache(cacher: &mut FileCacher) -> Vec<Result<Self>>
+    where
+        Self: Sized,
+    {
+        match cacher.load_cache() {
+            Ok(json_string) => {
+                let process_events = json_string
+                    .into_iter()
+                    .map(|event_string| Self::deserialize_self(&event_string))
+                    .collect();
+                return process_events;
+            }
+            Err(_) => Vec::new(),
+        }
     }
 }
 
@@ -200,13 +225,21 @@ pub struct AppGatherer {
 }
 
 impl AppGatherer {
+    fn load_and_parse_events(cacher: &mut FileCacher) -> Vec<ActiveProcessEvent> {
+        let process_events = ActiveProcessEvent::load_from_cache(cacher);
+        process_events
+            .into_iter()
+            .filter_map(|process_result| process_result.ok())
+            .collect()
+    }
+
     pub fn new(data_path: &Path) -> Self {
         let data_path: PathBuf = PathBuf::from(data_path).join("apps.json");
-        let cacher = FileCacher::new(data_path);
+        let mut cacher = FileCacher::new(data_path);
         let (thread_ctrl_tx, thread_ctrl_rx) = channel::<bool>();
 
         let current = Arc::new(Mutex::new(None));
-        let process_events = Arc::new(Mutex::new(Vec::new()));
+        let process_events = Arc::new(Mutex::new(Self::load_and_parse_events(&mut cacher)));
         let current_clone = Arc::clone(&current);
         let process_events_clone = Arc::clone(&process_events);
 
