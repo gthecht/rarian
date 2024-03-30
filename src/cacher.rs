@@ -1,28 +1,21 @@
 use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 
-pub trait Cache {
-    fn cache(&mut self, line: String) -> Result<()>;
+pub trait Cache<T>
+where
+    T: Serialize,
+{
+    fn cache(&mut self, obj: &T) -> Result<()>;
 }
 
-pub trait CacherLoad {
-    fn load_cache(&mut self) -> Result<Vec<String>>;
-}
-
-pub trait CacheEvent<Cacher: Cache> {
-    fn cache(&self, cacher: &mut Cacher) -> Result<()>;
-}
-
-pub trait LoadFromCache<Cacher: Cache> {
-    fn deserialize_self(input: &str) -> Result<Self>
-    where
-        Self: Sized;
-
-    fn load_from_cache(cacher: &mut Cacher) -> Vec<Result<Self>>
-    where
-        Self: Sized;
+pub trait LoadFromCache<T>
+where
+    T: Sized,
+{
+    fn load_from_cache(&mut self) -> Vec<T>;
 }
 
 pub struct FileCacher {
@@ -43,21 +36,37 @@ impl FileCacher {
     }
 }
 
-impl Cache for FileCacher {
-    fn cache(&mut self, line: String) -> Result<()> {
+impl<T> Cache<T> for FileCacher
+where
+    T: Serialize + Sized,
+{
+    fn cache(&mut self, obj: &T) -> Result<()> {
+        let line = serde_json::to_string(&obj).expect("Serialization failed");
         self.file
             .write_all((line + "\n").as_bytes())
             .context("failed to write line to file")
     }
 }
 
-impl CacherLoad for FileCacher {
-    fn load_cache(&mut self) -> Result<Vec<String>> {
+impl<T> LoadFromCache<T> for FileCacher
+where
+    T: for<'a> Deserialize<'a>,
+{
+    fn load_from_cache(&mut self) -> Vec<T> {
         let mut read_buffer = String::new();
-        let _read_result = self
-            .file
-            .read_to_string(&mut read_buffer)
-            .expect("failed to read file contents");
-        Ok(read_buffer.lines().map(String::from).collect())
+        match self.file.read_to_string(&mut read_buffer) {
+            Ok(_) => read_buffer
+                .lines()
+                .filter_map(|line| {
+                    serde_json::from_str::<T>(&line)
+                        .context("Failed to parse line")
+                        .ok()
+                })
+                .collect(),
+            Err(e) => {
+                println!("Error reading from cache: {}", e);
+                Vec::new()
+            }
+        }
     }
 }

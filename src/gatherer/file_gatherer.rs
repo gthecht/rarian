@@ -1,4 +1,4 @@
-use serde_json;
+use serde_json::{self, Value};
 extern crate notify;
 use anyhow::Result;
 use std::path::{Path, PathBuf};
@@ -6,18 +6,15 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::{spawn, JoinHandle};
 use std::time::SystemTime;
 
-use crate::cacher::{Cache, CacheEvent, FileCacher};
+use crate::cacher::{Cache, FileCacher};
 use crate::gatherer::file_watcher::watch_dir_thread;
 
-impl CacheEvent<FileCacher> for notify::Event {
-    fn cache(&self, cacher: &mut FileCacher) -> Result<()> {
-        let timestamp = SystemTime::now();
-        let json_cache = serde_json::json!({
-            "event": self,
-            "timestamp": timestamp
-        });
-        cacher.cache(json_cache.to_string())
-    }
+fn cache_event(event: &notify::Event) -> Value {
+    let timestamp = SystemTime::now();
+    serde_json::json!({
+        "event": event,
+        "timestamp": timestamp
+    })
 }
 
 fn create_notify_channel() -> (
@@ -51,7 +48,9 @@ fn create_caching_thread(
     let mut cacher = FileCacher::new(data_path);
     spawn(move || loop {
         match notify_rx.recv() {
-            Ok(Ok(file_event)) => file_event.cache(&mut cacher).expect("cache event failed"),
+            Ok(Ok(file_event)) => cacher
+                .cache(&cache_event(&file_event))
+                .expect("cache event failed"),
             Ok(Err(e)) => println!("notify error: {:?}!", e),
             Err(e) => {
                 println!("rx error: {:?}!", e);
