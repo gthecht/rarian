@@ -97,7 +97,7 @@ impl Display for Action {
     }
 }
 
-pub fn run_app<'g>(app_gatherer: &AppGatherer, data_path: &Path) {
+pub fn run_app(app_gatherer: &AppGatherer, data_path: &Path) {
     let mut note_taker = NoteTaker::new(data_path);
     let num: usize = 5;
     use Action::*;
