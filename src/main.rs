@@ -8,12 +8,12 @@ mod cacher;
 use crate::app::run_app;
 use crate::gatherer::app_gatherer::AppGatherer;
 use crate::gatherer::file_gatherer::FileGatherer;
-use directories::ProjectDirs;
+use directories::{BaseDirs, ProjectDirs};
 
 fn main() {
+    let base_dirs = BaseDirs::new().unwrap();
     let file_paths = vec![
-        "C:/Users/gdhec/workspace/rarian".to_string(),
-        // "D:/Documents/Obsidian".to_string(),
+        base_dirs.home_dir().join("workspace"),
     ];
     let project_dir = ProjectDirs::from("", "Rarian", "rarian").unwrap();
     let data_path = project_dir.data_dir();

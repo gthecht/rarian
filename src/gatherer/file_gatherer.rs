@@ -25,7 +25,7 @@ fn create_notify_channel() -> (
 }
 
 fn create_file_watchers(
-    file_paths: Vec<String>,
+    file_paths: Vec<PathBuf>,
     notify_tx: Sender<Result<notify::Event, notify::Error>>,
 ) -> Vec<(Sender<bool>, JoinHandle<()>)> {
     let file_watcher_threads: Vec<(Sender<bool>, JoinHandle<()>)> = file_paths
@@ -45,12 +45,26 @@ fn create_caching_thread(
     notify_rx: Receiver<Result<notify::Event, notify::Error>>,
     data_path: PathBuf,
 ) {
-    let mut cacher = FileCacher::new(data_path);
+    let mut cacher = FileCacher::new(data_path.clone());
     spawn(move || loop {
+        let cache_path = data_path.as_path().to_str().expect("path to string failed");
         match notify_rx.recv() {
-            Ok(Ok(file_event)) => cacher
-                .cache(&cache_event(&file_event))
-                .expect("cache event failed"),
+            Ok(Ok(file_event)) => {
+
+                if file_event
+                    .paths
+                    .iter()
+                    .filter(|path| {
+                        let path_str = path.to_str().expect("path to string failed");
+                        path_str.ends_with(cache_path)
+                    })
+                    .count() == 0
+                {
+                    cacher
+                        .cache(&cache_event(&file_event))
+                        .expect("cache event failed")
+                }
+            }
             Ok(Err(e)) => println!("notify error: {:?}!", e),
             Err(e) => {
                 println!("rx error: {:?}!", e);
@@ -65,7 +79,7 @@ pub struct FileGatherer {
 }
 
 impl FileGatherer {
-    pub fn new(file_paths: Vec<String>, data_path: &Path) -> Self {
+    pub fn new(file_paths: Vec<PathBuf>, data_path: &Path) -> Self {
         let data_path: PathBuf = PathBuf::from(data_path).join("files.json");
         let (notify_tx, notify_rx) = create_notify_channel();
         let file_watcher_threads = create_file_watchers(file_paths, notify_tx);
