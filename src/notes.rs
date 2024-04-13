@@ -5,14 +5,14 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Note {
-    process: String,
+    link: String,
     pub text: String,
 }
 
 impl Note {
-    pub fn new(text: &str, process: &ActiveProcessEvent) -> Self {
+    pub fn new(text: &str, link: &str) -> Self {
         Self {
-            process: process.get_title().to_string(),
+            link: link.to_string(),
             text: text.to_string(),
         }
     }
@@ -33,7 +33,7 @@ impl NoteTaker {
     }
 
     pub fn add_note(&mut self, text: &str, process: &ActiveProcessEvent) {
-        let note = Note::new(text, process);
+        let note = Note::new(text, &process.get_title().to_string(),);
         self.cacher.cache(&note).expect("cache event failed");
         self.notes.push(note);
     }
@@ -41,7 +41,7 @@ impl NoteTaker {
     pub fn get_app_notes(&self, process_title: &str) -> Vec<&Note> {
         self.notes
             .iter()
-            .filter(|note| note.process == process_title)
+            .filter(|note| note.link == process_title)
             .collect()
     }
 }
