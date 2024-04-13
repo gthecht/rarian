@@ -50,19 +50,19 @@ fn create_caching_thread(
         let cache_path = data_path.as_path().to_str().expect("path to string failed");
         match notify_rx.recv() {
             Ok(Ok(file_event)) => {
-
-                if file_event
+                let file_paths = file_event
                     .paths
                     .iter()
-                    .filter(|path| {
-                        let path_str = path.to_str().expect("path to string failed");
-                        path_str.ends_with(cache_path)
-                    })
-                    .count() == 0
-                {
+                    .map(|p| p.to_str().expect("path to string failed"));
+
+                if file_paths.clone().filter(|path| path.ends_with(cache_path)).count() > 0 {
+                    continue;
+                }
                     cacher
                         .cache(&cache_event(&file_event))
-                        .expect("cache event failed")
+                        .expect("cache event failed");
+                if file_paths.filter(|path| path.contains(r"\.")).count() > 0 {
+                    continue;
                 }
             }
             Ok(Err(e)) => println!("notify error: {:?}!", e),
