@@ -1,9 +1,8 @@
 use crate::cacher::{Cache, FileCacher, LoadFromCache};
-use crate::gatherer::app_gatherer::ActiveProcessEvent;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Note {
     link: String,
     pub text: String,
@@ -32,16 +31,18 @@ impl NoteTaker {
         return note_taker;
     }
 
-    pub fn add_note(&mut self, text: &str, process: &ActiveProcessEvent) {
-        let note = Note::new(text, &process.get_title().to_string(),);
+    pub fn add_note(&mut self, text: &str, link: &str) {
+        let note = Note::new(text, link);
         self.cacher.cache(&note).expect("cache event failed");
         self.notes.push(note);
     }
 
-    pub fn get_app_notes(&self, process_title: &str) -> Vec<&Note> {
+    pub fn get_app_notes(&self, link: &str) -> Vec<Note> {
         self.notes
             .iter()
-            .filter(|note| note.link == process_title)
+            .filter(|note| note.link == link)
+            .rev()
+            .cloned()
             .collect()
     }
 }
