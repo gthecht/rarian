@@ -14,7 +14,9 @@ use std::time::SystemTime;
 
 use crate::cacher::{Cache, FileCacher};
 use crate::gatherer::file_watcher::watch_dir_thread;
-use crate::notes::Note;
+use crate::notes::NoteTaker;
+
+use super::app_gatherer::AppGatherer;
 
 fn cache_event(event: &notify::Event) -> Value {
     let timestamp = SystemTime::now();
@@ -48,85 +50,82 @@ fn create_file_watchers(
     return file_watcher_threads;
 }
 
-fn check_for_notes(file_event: notify::Event) {
-    let notes: Vec<Result<Option<Vec<Note>>, &str>> = file_event
-        .paths
-        .iter()
-        .map(|path| {
-            if let Ok(mut file) = OpenOptions::new().read(true).open(path) {
-                let mut read_buffer = String::new();
-                match file.read_to_string(&mut read_buffer) {
-                    Ok(_) => {
-                        let comment_identifier = str::from_utf8(&[64, 35, 36]).unwrap();
-                        let split_file: Vec<&str> =
-                            read_buffer.trim().split(comment_identifier).collect();
-                        if split_file.len() > 1 && split_file.len() % 2 == 1 {
-                            println!("identified note!");
-                            let mut file_text = Vec::<&str>::new();
-                            let mut notes = Vec::<&str>::new();
-                            split_file
-                                .into_iter()
-                                .enumerate()
-                                .for_each(|(index, text)| {
-                                    if index % 2 == 0 {
-                                        file_text.push(text);
-                                    } else {
-                                        notes.push(text);
-                                    }
-                                });
-                            let notes: Vec<Note> =
-                                notes
-                                    .into_iter()
-                                    .map(|note| {
-                                        Note::new(note.trim(), path.to_str().expect(
-                                        "path conversion to string was already run before this",
-                                    ))
-                                    })
-                                    .collect();
-                            let mut new_file_text =
-                                file_text.into_iter().map(|text| text.trim_end()).join("");
-                            new_file_text.push_str("\n");
-                            if let Ok(mut write_file) =
-                                OpenOptions::new().truncate(true).write(true).open(path)
-                            {
-                                if let Ok(_) = write_file.write_all(new_file_text.as_bytes()) {
-                                    println!("successfully extracted notes");
-                                    return Ok(Some(notes));
+fn check_for_notes(
+    app_gatherer: &AppGatherer,
+    note_taker: &mut NoteTaker,
+    file_event: notify::Event,
+) {
+    file_event.paths.iter().for_each(|path| {
+        if let Ok(mut file) = OpenOptions::new().read(true).open(path) {
+            let mut read_buffer = String::new();
+            match file.read_to_string(&mut read_buffer) {
+                Ok(_) => {
+                    let comment_identifier = str::from_utf8(&[64, 35, 36]).unwrap();
+                    let split_file: Vec<&str> =
+                        read_buffer.trim().split(comment_identifier).collect();
+                    if split_file.len() > 1 && split_file.len() % 2 == 1 {
+                        println!("identified note!");
+                        let mut file_text = Vec::<&str>::new();
+                        let mut notes = Vec::<&str>::new();
+                        split_file
+                            .into_iter()
+                            .enumerate()
+                            .for_each(|(index, text)| {
+                                if index % 2 == 0 {
+                                    file_text.push(text);
                                 } else {
-                                    return Err("failed to write to file");
+                                    notes.push(text);
                                 }
+                            });
+                        if let Some(process) = app_gatherer.get_current() {
+                            notes.into_iter().for_each(|note| {
+                                note_taker.add_note(&note.trim(), &process);
+                            })
+                        } else {
+                            println!("no current process");
+                        }
+                        let mut new_file_text =
+                            file_text.into_iter().map(|text| text.trim_end()).join("");
+                        new_file_text.push_str("\n");
+                        if let Ok(mut write_file) =
+                            OpenOptions::new().truncate(true).write(true).open(path)
+                        {
+                            if let Ok(_) = write_file.write_all(new_file_text.as_bytes()) {
+                                println!("successfully extracted notes");
                             } else {
-                                Err("Error reading file")
+                                println!("failed to write to file");
                             }
                         } else {
-                            if split_file.len() == 1 {
-                                println!("no comment identifiers found");
-                            } else {
-                                println!("odd number of comment identifiers");
-                            }
-                            return Ok(None);
+                            println!("Error reading file")
+                        }
+                    } else {
+                        if split_file.len() == 1 {
+                            println!("no comment identifiers found");
+                        } else {
+                            println!("odd number of comment identifiers");
                         }
                     }
-                    Err(_) => Err("Error parsing file part to string"),
                 }
-            } else {
-                Err("Error reading file")
+                Err(_) => println!("Error parsing file part to string"),
             }
-        })
-        .collect();
-    notes.iter().for_each(|note| println!("{:?}", note));
+        } else {
+            println!("Error reading file")
+        }
+    });
 }
 
-fn act_on_event(file_event: notify::Event) {
+fn act_on_event(app_gatherer: &AppGatherer, note_taker: &mut NoteTaker, file_event: notify::Event) {
     match file_event.kind {
         EventKind::Modify(ModifyKind::Any | ModifyKind::Data(_) | ModifyKind::Other) => {
-            check_for_notes(file_event)
+            check_for_notes(app_gatherer, note_taker, file_event)
         }
         _ => {}
     }
 }
 
 fn create_caching_thread(
+    app_gatherer: &AppGatherer,
+    note_taker: &mut NoteTaker,
     notify_rx: Receiver<Result<notify::Event, notify::Error>>,
     data_path: PathBuf,
 ) {
@@ -154,7 +153,7 @@ fn create_caching_thread(
                 if file_paths.filter(|path| path.contains(r"\.")).count() > 0 {
                     continue;
                 }
-                act_on_event(file_event);
+                act_on_event(app_gatherer, note_taker, file_event);
             }
             Ok(Err(e)) => println!("notify error: {:?}!", e),
             Err(e) => {
@@ -170,11 +169,16 @@ pub struct FileGatherer {
 }
 
 impl FileGatherer {
-    pub fn new(file_paths: Vec<PathBuf>, data_path: &Path) -> Self {
+    pub fn new(
+        app_gatherer: &AppGatherer,
+        note_taker: &mut NoteTaker,
+        file_paths: Vec<PathBuf>,
+        data_path: &Path,
+    ) -> Self {
         let data_path: PathBuf = PathBuf::from(data_path).join("files.json");
         let (notify_tx, notify_rx) = create_notify_channel();
         let file_watcher_threads = create_file_watchers(file_paths, notify_tx);
-        create_caching_thread(notify_rx, data_path);
+        create_caching_thread(app_gatherer, note_taker, notify_rx, data_path);
         Self {
             file_watcher_threads,
         }
