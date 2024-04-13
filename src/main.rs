@@ -9,6 +9,7 @@ use crate::app::run_app;
 use crate::gatherer::app_gatherer::AppGatherer;
 use crate::gatherer::file_gatherer::FileGatherer;
 use directories::{BaseDirs, ProjectDirs};
+use notes::NoteTaker;
 
 fn main() {
     let base_dirs = BaseDirs::new().unwrap();
@@ -19,9 +20,10 @@ fn main() {
     let data_path = project_dir.data_dir();
     create_dir_all(data_path).expect("Creating the project directories in Roaming failed");
 
-    let file_gatherer = FileGatherer::new(file_paths, data_path);
     let app_gatherer = AppGatherer::new(data_path);
-    run_app(&app_gatherer, data_path);
+    let mut note_taker = NoteTaker::new(data_path);
+    let file_gatherer = FileGatherer::new(&app_gatherer, &mut note_taker, file_paths, data_path);
+    run_app(&app_gatherer, &mut note_taker);
     app_gatherer.close();
     file_gatherer.close();
 }
