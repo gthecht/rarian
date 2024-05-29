@@ -1,5 +1,9 @@
-use crate::{gatherer::app_gatherer::AppGatherer, notes::NoteTaker};
-use std::{fmt::Display, io, path::Path};
+use crate::{gatherer::app_gatherer::ActiveProcessEvent, notes::Note, StateMachine};
+use std::{
+    fmt::Display,
+    io,
+    sync::mpsc::{channel, Sender},
+};
 
 fn build_input_message<T>(choises: &[T]) -> String
 where
@@ -43,21 +47,33 @@ where
         .expect("chosen_index is smaller then vector length")
 }
 
-fn new_note(app_gatherer: &AppGatherer, note_taker: &mut NoteTaker, num: usize) {
+fn new_note(state_machine_tx: Sender<StateMachine>, num: usize) {
     println!("enter a new note");
     let note = &mut String::new();
     let stdin = io::stdin();
     stdin.read_line(note).expect("failed to read stdin");
-    let mut last_processes = app_gatherer.get_last_processes(num);
+    let (tx, rx) = channel::<Vec<ActiveProcessEvent>>();
+    state_machine_tx.send(StateMachine::RecentApps(num, tx)).unwrap();
+    let mut last_processes = rx.recv().expect("main thread is alive");
     let process = choose_with_input(&mut last_processes);
-    note_taker.add_note(&note.trim(), process);
+    state_machine_tx.send(StateMachine::NewNote(
+        note.trim().to_string(),
+        process.get_title().to_string(),
+    )).unwrap();
 }
 
-fn show_current(app_gatherer: &AppGatherer, note_taker: &NoteTaker, num: usize) {
-    match app_gatherer.get_current() {
+fn show_current(state_machine_tx: Sender<StateMachine>, num: usize) {
+    let (tx, rx) = channel::<Option<ActiveProcessEvent>>();
+    state_machine_tx.send(StateMachine::CurrentApp(tx)).unwrap();
+    match rx.recv().expect("main thread is alive") {
         Some(current) => {
             println!("current: {}", current.get_title());
-            let app_notes = note_taker.get_app_notes(current.get_title());
+            let (tx, rx) = channel::<Vec<Note>>();
+            state_machine_tx.send(StateMachine::GetAppNotes(
+                current.get_title().to_string(),
+                tx,
+            )).unwrap();
+            let app_notes = rx.recv().expect("main thread is alive");
             app_notes.iter().take(num).for_each(|note| {
                 println!("  - {}", note.text);
             });
@@ -66,12 +82,16 @@ fn show_current(app_gatherer: &AppGatherer, note_taker: &NoteTaker, num: usize) 
     }
 }
 
-fn show_last_apps(app_gatherer: &AppGatherer, note_taker: &NoteTaker, num: usize) {
-    let last_processes = app_gatherer.get_last_processes(num);
+fn show_last_apps(state_machine_tx: Sender<StateMachine>, num: usize) {
+    let (tx, rx) = channel::<Vec<ActiveProcessEvent>>();
+    state_machine_tx.send(StateMachine::RecentApps(num, tx)).unwrap();
+    let last_processes = rx.recv().expect("main thread is alive");
     println!("last {} apps:", last_processes.len());
     last_processes.iter().enumerate().for_each(|(index, item)| {
         println!("{}. {}", index, item.get_title());
-        let app_notes = note_taker.get_app_notes(item.get_title());
+        let (tx, rx) = channel::<Vec<Note>>();
+        state_machine_tx.send(StateMachine::GetAppNotes(item.get_title().to_string(), tx)).unwrap();
+        let app_notes = rx.recv().expect("main thread is alive");
         app_notes.iter().take(num).for_each(|note| {
             println!("  - {}", note.text);
         });
@@ -97,8 +117,7 @@ impl Display for Action {
     }
 }
 
-pub fn run_app(app_gatherer: &AppGatherer, data_path: &Path) {
-    let mut note_taker = NoteTaker::new(data_path);
+pub fn run_app(state_machine_tx: Sender<StateMachine>) {
     let num: usize = 5;
     use Action::*;
     let mut actions = vec![
@@ -109,11 +128,12 @@ pub fn run_app(app_gatherer: &AppGatherer, data_path: &Path) {
     ];
     loop {
         match choose_with_input(&mut actions) {
-            NewNote(_) => new_note(app_gatherer, &mut note_taker, num),
-            ShowCurrent(_) => show_current(app_gatherer, &note_taker, num),
-            ShowLast(_) => show_last_apps(app_gatherer, &note_taker, num),
+            NewNote(_) => new_note(state_machine_tx.clone(), num),
+            ShowCurrent(_) => show_current(state_machine_tx.clone(), num),
+            ShowLast(_) => show_last_apps(state_machine_tx.clone(), num),
             Quit(_) => {
                 println!("quitting");
+                state_machine_tx.send(StateMachine::Quit).unwrap();
                 break;
             }
         }
