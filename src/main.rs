@@ -8,7 +8,7 @@ mod cacher;
 mod gatherer;
 mod notes;
 
-use crate::app::run_app;
+use crate::app::tui::run_app;
 use crate::gatherer::app_gatherer::AppGatherer;
 use crate::gatherer::file_gatherer::FileGatherer;
 use directories::{BaseDirs, ProjectDirs};

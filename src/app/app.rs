@@ -53,13 +53,17 @@ fn new_note(state_machine_tx: Sender<StateMachine>, num: usize) {
     let stdin = io::stdin();
     stdin.read_line(note).expect("failed to read stdin");
     let (tx, rx) = channel::<Vec<ActiveProcessEvent>>();
-    state_machine_tx.send(StateMachine::RecentApps(num, tx)).unwrap();
+    state_machine_tx
+        .send(StateMachine::RecentApps(num, tx))
+        .unwrap();
     let mut last_processes = rx.recv().expect("main thread is alive");
     let process = choose_with_input(&mut last_processes);
-    state_machine_tx.send(StateMachine::NewNote(
-        note.trim().to_string(),
-        process.get_title().to_string(),
-    )).unwrap();
+    state_machine_tx
+        .send(StateMachine::NewNote(
+            note.trim().to_string(),
+            process.get_title().to_string(),
+        ))
+        .unwrap();
 }
 
 fn show_current(state_machine_tx: Sender<StateMachine>, num: usize) {
@@ -69,10 +73,12 @@ fn show_current(state_machine_tx: Sender<StateMachine>, num: usize) {
         Some(current) => {
             println!("current: {}", current.get_title());
             let (tx, rx) = channel::<Vec<Note>>();
-            state_machine_tx.send(StateMachine::GetAppNotes(
-                current.get_title().to_string(),
-                tx,
-            )).unwrap();
+            state_machine_tx
+                .send(StateMachine::GetAppNotes(
+                    current.get_title().to_string(),
+                    tx,
+                ))
+                .unwrap();
             let app_notes = rx.recv().expect("main thread is alive");
             app_notes.iter().take(num).for_each(|note| {
                 println!("  - {}", note.text);
@@ -84,13 +90,17 @@ fn show_current(state_machine_tx: Sender<StateMachine>, num: usize) {
 
 fn show_last_apps(state_machine_tx: Sender<StateMachine>, num: usize) {
     let (tx, rx) = channel::<Vec<ActiveProcessEvent>>();
-    state_machine_tx.send(StateMachine::RecentApps(num, tx)).unwrap();
+    state_machine_tx
+        .send(StateMachine::RecentApps(num, tx))
+        .unwrap();
     let last_processes = rx.recv().expect("main thread is alive");
     println!("last {} apps:", last_processes.len());
     last_processes.iter().enumerate().for_each(|(index, item)| {
         println!("{}. {}", index, item.get_title());
         let (tx, rx) = channel::<Vec<Note>>();
-        state_machine_tx.send(StateMachine::GetAppNotes(item.get_title().to_string(), tx)).unwrap();
+        state_machine_tx
+            .send(StateMachine::GetAppNotes(item.get_title().to_string(), tx))
+            .unwrap();
         let app_notes = rx.recv().expect("main thread is alive");
         app_notes.iter().take(num).for_each(|note| {
             println!("  - {}", note.text);
