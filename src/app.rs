@@ -5,32 +5,32 @@ use std::{
     sync::mpsc::{channel, Sender},
 };
 
-fn build_input_message<T>(choises: &[T]) -> String
+fn build_input_message<T>(choices: &[T]) -> String
 where
     T: Display,
 {
     let mut message = String::from("Choose an option:\n");
-    choises.iter().enumerate().for_each(|(index, choise)| {
-        message += &format!("{}. {}\n", index, choise);
+    choices.iter().enumerate().for_each(|(index, choice)| {
+        message += &format!("{}. {}\n", index, choice);
     });
     message.to_string()
 }
 
-fn choose_with_input<T>(choises: &mut [T]) -> &mut T
+fn choose_with_input<T>(choices: &mut [T]) -> &mut T
 where
     T: Display,
 {
-    let message = build_input_message(choises);
+    let message = build_input_message(choices);
     println!("{}", message);
     let stdin = io::stdin();
-    let choices_num = choises.len();
+    let choices_num = choices.len();
     let chosen_index;
     loop {
         let input = &mut String::new();
         stdin.read_line(input).expect("failed to read stdin");
-        if let Ok(choise_index) = input.trim().parse::<usize>() {
-            if choise_index < choices_num {
-                chosen_index = choise_index;
+        if let Ok(choice_index) = input.trim().parse::<usize>() {
+            if choice_index < choices_num {
+                chosen_index = choice_index;
                 break;
             } else {
                 println!(
@@ -42,7 +42,7 @@ where
             println!("couldn't parse to usize, try again")
         }
     }
-    choises
+    choices
         .get_mut(chosen_index)
         .expect("chosen_index is smaller then vector length")
 }
