@@ -131,7 +131,7 @@ impl ActiveProcessGatherer {
 }
 
 fn duration() -> Duration {
-    return Duration::from_secs(1);
+    return Duration::from_millis(16);
 }
 
 fn init_system() -> System {
