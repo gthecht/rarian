@@ -19,7 +19,12 @@ use ratatui::{
     Frame, Terminal,
 };
 
-use crate::{gatherer::app_gatherer::ActiveProcessEvent, notes::Note, StateMachine};
+use crate::{
+    app::insert_note::InsertWindow, gatherer::app_gatherer::ActiveProcessEvent, notes::Note,
+    StateMachine,
+};
+
+use super::insert_note::InputMode;
 
 pub type Tui = Terminal<CrosstermBackend<Stdout>>;
 
@@ -35,10 +40,11 @@ pub fn restore() -> io::Result<()> {
     Ok(())
 }
 
-#[derive(Debug)]
 pub struct TuiApp {
     state_machine_tx: Sender<StateMachine>,
     exit: bool,
+    input_mode: InputMode,
+    insert_note_window: InsertWindow,
     notes_window: NotesWindow,
     last_apps_window: LastAppsWindow,
 }
@@ -48,6 +54,8 @@ impl TuiApp {
         TuiApp {
             state_machine_tx: state_machine_tx.clone(),
             exit: false,
+            input_mode: InputMode::Normal,
+            insert_note_window: InsertWindow::new(state_machine_tx.clone()),
             notes_window: NotesWindow::new(state_machine_tx.clone(), num),
             last_apps_window: LastAppsWindow::new(state_machine_tx.clone(), num),
         }
@@ -66,8 +74,32 @@ impl TuiApp {
             .direction(Direction::Horizontal)
             .constraints(vec![Constraint::Percentage(30), Constraint::Percentage(70)])
             .split(frame.size());
+        let notes_layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(vec![Constraint::Percentage(20), Constraint::Percentage(80)])
+            .split(layout[1]);
         frame.render_widget(&self.last_apps_window, layout[0]);
-        frame.render_widget(&self.notes_window, layout[1]);
+        frame.render_widget(&self.insert_note_window, notes_layout[0]);
+        frame.render_widget(&self.notes_window, notes_layout[1]);
+        match self.input_mode {
+            InputMode::Normal =>
+                // Hide the cursor. `Frame` does this by default, so we don't need to do anything here
+                {}
+    
+            InputMode::Editing => {
+                // Make the cursor visible and ask ratatui to put it at the specified coordinates after
+                // rendering
+                #[allow(clippy::cast_possible_truncation)]
+                frame.set_cursor(
+                    // Draw the cursor at the current position in the input field.
+                    // This position is can be controlled via the left and right arrow key
+                    notes_layout[0].x + self.insert_note_window.character_index as u16 + 1,
+                    // Move one line down, from the border to the input line
+                    notes_layout[0].y + 1,
+                );
+            }
+        }
+
     }
 
     fn handle_events(&mut self) -> io::Result<()> {
@@ -84,11 +116,28 @@ impl TuiApp {
         Ok(())
     }
 
-    fn handle_key_event(&mut self, key_event: KeyEvent) {
+    fn handle_normal_mode_key_event(&mut self, key_event: KeyEvent) {
         match key_event.code {
+            KeyCode::Char('i') => self.input_mode = InputMode::Editing,
             KeyCode::Char('q') => self.exit(),
             KeyCode::Char('Q') => self.exit(),
             _ => {}
+        }
+    }
+
+    fn handle_editing_mode_key_event(&mut self, key_event: KeyEvent) {
+        match key_event.code {
+            KeyCode::Esc => self.input_mode = InputMode::Normal,
+            _ => {
+                self.input_mode = self.insert_note_window.handle_key_event(key_event);
+            },
+        }
+    }
+
+    fn handle_key_event(&mut self, key_event: KeyEvent) {
+        match self.input_mode {
+            InputMode::Normal => self.handle_normal_mode_key_event(key_event),
+            InputMode::Editing => self.handle_editing_mode_key_event(key_event),
         }
     }
 
@@ -98,71 +147,6 @@ impl TuiApp {
     }
 }
 
-#[derive(Debug)]
-struct NotesWindow {
-    state_machine_tx: Sender<StateMachine>,
-    num: usize,
-}
-
-impl NotesWindow {
-    pub fn new(state_machine_tx: Sender<StateMachine>, num: usize) -> NotesWindow {
-        NotesWindow {
-            state_machine_tx,
-            num,
-        }
-    }
-
-    fn show_current(&self) -> Option<(String, Vec<Note>)> {
-        let (tx, rx) = channel::<Option<ActiveProcessEvent>>();
-        self.state_machine_tx.send(StateMachine::CurrentApp(tx)).unwrap();
-        match rx.recv().expect("main thread is alive") {
-            Some(current) => {
-                let title = current.get_title();
-                let (tx, rx) = channel::<Vec<Note>>();
-                self.state_machine_tx
-                    .send(StateMachine::GetAppNotes(
-                        current.get_title().to_string(),
-                        tx,
-                    ))
-                    .unwrap();
-                let app_notes = rx.recv().expect("main thread is alive");
-                Some((title.to_owned(), app_notes.into_iter().take(self.num).collect()))
-            }
-            None => None,
-        }
-    }
-}
-
-impl Widget for &NotesWindow {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        match self.show_current() {
-            Some((title, notes)) => {
-                let title = format!(" {} ", title);
-                let block = Block::bordered()
-                    .title(Title::from(title.bold()).alignment(Alignment::Center))
-                    .border_set(border::THICK);
-
-                let notes_text = notes
-                    .iter()
-                    .map(|note| Line::from(format!(" - {}", note.text.clone())))
-                    .collect::<Vec<Line>>();
-                Paragraph::new(notes_text).block(block).render(area, buf);
-            }
-            None => {
-                let title = Title::from(" no app currently detected ".bold());
-                let block = Block::bordered()
-                    .title(title.alignment(Alignment::Center))
-                    .border_set(border::THICK);
-                Paragraph::new(Text::default())
-                    .centered()
-                    .block(block)
-                    .render(area, buf);
-            }
-        }
-    }
-}
-
-#[derive(Debug)]
 struct LastAppsWindow {
     state_machine_tx: Sender<StateMachine>,
     num: usize,
@@ -204,6 +188,74 @@ impl Widget for &LastAppsWindow {
             .repeat_highlight_symbol(true);
 
         list.render(area, buf);
+    }
+}
+
+struct NotesWindow {
+    state_machine_tx: Sender<StateMachine>,
+    num: usize,
+}
+
+impl NotesWindow {
+    pub fn new(state_machine_tx: Sender<StateMachine>, num: usize) -> NotesWindow {
+        NotesWindow {
+            state_machine_tx,
+            num,
+        }
+    }
+
+    fn show_current(&self) -> Option<(String, Vec<Note>)> {
+        let (tx, rx) = channel::<Option<ActiveProcessEvent>>();
+        self.state_machine_tx
+            .send(StateMachine::CurrentApp(tx))
+            .unwrap();
+        match rx.recv().expect("main thread is alive") {
+            Some(current) => {
+                let title = current.get_title();
+                let (tx, rx) = channel::<Vec<Note>>();
+                self.state_machine_tx
+                    .send(StateMachine::GetAppNotes(
+                        current.get_title().to_string(),
+                        tx,
+                    ))
+                    .unwrap();
+                let app_notes = rx.recv().expect("main thread is alive");
+                Some((
+                    title.to_owned(),
+                    app_notes.into_iter().take(self.num).collect(),
+                ))
+            }
+            None => None,
+        }
+    }
+}
+
+impl Widget for &NotesWindow {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        match self.show_current() {
+            Some((title, notes)) => {
+                let title = format!(" {} ", title);
+                let block = Block::bordered()
+                    .title(Title::from(title.bold()).alignment(Alignment::Center))
+                    .border_set(border::THICK);
+
+                let notes_text = notes
+                    .iter()
+                    .map(|note| Line::from(format!(" - {}", note.text.clone())))
+                    .collect::<Vec<Line>>();
+                Paragraph::new(notes_text).block(block).render(area, buf);
+            }
+            None => {
+                let title = Title::from(" no app currently detected ".bold());
+                let block = Block::bordered()
+                    .title(title.alignment(Alignment::Center))
+                    .border_set(border::THICK);
+                Paragraph::new(Text::default())
+                    .centered()
+                    .block(block)
+                    .render(area, buf);
+            }
+        }
     }
 }
 
