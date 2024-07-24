@@ -111,11 +111,31 @@ impl NotesWindow {
             num,
         }
     }
+
+    fn show_current(&self) -> Option<(String, Vec<Note>)> {
+        let (tx, rx) = channel::<Option<ActiveProcessEvent>>();
+        self.state_machine_tx.send(StateMachine::CurrentApp(tx)).unwrap();
+        match rx.recv().expect("main thread is alive") {
+            Some(current) => {
+                let title = current.get_title();
+                let (tx, rx) = channel::<Vec<Note>>();
+                self.state_machine_tx
+                    .send(StateMachine::GetAppNotes(
+                        current.get_title().to_string(),
+                        tx,
+                    ))
+                    .unwrap();
+                let app_notes = rx.recv().expect("main thread is alive");
+                Some((title.to_owned(), app_notes.into_iter().take(self.num).collect()))
+            }
+            None => None,
+        }
+    }
 }
 
 impl Widget for &NotesWindow {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        match show_current(self.state_machine_tx.clone(), self.num) {
+        match self.show_current() {
             Some((title, notes)) => {
                 let title = format!(" {} ", title);
                 let block = Block::bordered()
@@ -142,26 +162,6 @@ impl Widget for &NotesWindow {
     }
 }
 
-fn show_current(state_machine_tx: Sender<StateMachine>, num: usize) -> Option<(String, Vec<Note>)> {
-    let (tx, rx) = channel::<Option<ActiveProcessEvent>>();
-    state_machine_tx.send(StateMachine::CurrentApp(tx)).unwrap();
-    match rx.recv().expect("main thread is alive") {
-        Some(current) => {
-            let title = current.get_title();
-            let (tx, rx) = channel::<Vec<Note>>();
-            state_machine_tx
-                .send(StateMachine::GetAppNotes(
-                    current.get_title().to_string(),
-                    tx,
-                ))
-                .unwrap();
-            let app_notes = rx.recv().expect("main thread is alive");
-            Some((title.to_owned(), app_notes.into_iter().take(num).collect()))
-        }
-        None => None,
-    }
-}
-
 #[derive(Debug)]
 struct LastAppsWindow {
     state_machine_tx: Sender<StateMachine>,
@@ -175,13 +175,25 @@ impl LastAppsWindow {
             num,
         }
     }
+
+    fn show_last_apps(&self) -> Vec<ActiveProcessEvent> {
+        let (tx, rx) = channel::<Vec<ActiveProcessEvent>>();
+        self.state_machine_tx
+            .send(StateMachine::RecentApps(self.num, tx))
+            .unwrap();
+        let last_processes = rx.recv().expect("main thread is alive");
+        last_processes.into_iter().take(self.num).collect()
+    }
 }
 
 impl Widget for &LastAppsWindow {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let title = " latest apps ";
-        let last_apps = show_last_apps(self.state_machine_tx.clone(), self.num);
-        let list = last_apps.iter().map(|app_window| app_window.get_title()).collect::<List>()
+        let last_apps = self.show_last_apps();
+        let list = last_apps
+            .iter()
+            .map(|app_window| app_window.get_title())
+            .collect::<List>()
             .block(
                 Block::bordered()
                     .title(Title::from(title.bold()).alignment(Alignment::Center))
@@ -193,15 +205,6 @@ impl Widget for &LastAppsWindow {
 
         list.render(area, buf);
     }
-}
-
-fn show_last_apps(state_machine_tx: Sender<StateMachine>, num: usize) -> Vec<ActiveProcessEvent> {
-    let (tx, rx) = channel::<Vec<ActiveProcessEvent>>();
-    state_machine_tx
-        .send(StateMachine::RecentApps(num, tx))
-        .unwrap();
-    let last_processes = rx.recv().expect("main thread is alive");
-    last_processes.into_iter().take(num).collect()
 }
 
 pub fn run_app(state_machine_tx: Sender<StateMachine>) {
