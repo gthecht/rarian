@@ -228,7 +228,7 @@ impl AppGatherer {
             .take(num)
             .map(|process| process.clone())
             .collect();
-        return last_processes;
+        last_processes
     }
 
     pub fn close(self) {
