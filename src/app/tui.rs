@@ -47,6 +47,7 @@ pub struct TuiApp {
     insert_note_window: InsertWindow,
     notes_window: NotesWindow,
     last_apps_window: LastAppsWindow,
+    help_window: HelpWindow,
 }
 
 impl TuiApp {
@@ -58,6 +59,7 @@ impl TuiApp {
             insert_note_window: InsertWindow::new(state_machine_tx.clone()),
             notes_window: NotesWindow::new(state_machine_tx.clone()),
             last_apps_window: LastAppsWindow::new(state_machine_tx.clone()),
+            help_window: HelpWindow::new(),
         }
     }
 
@@ -79,13 +81,16 @@ impl TuiApp {
             .constraints(vec![Constraint::Percentage(20), Constraint::Percentage(80)])
             .split(layout[1]);
         frame.render_widget(&self.last_apps_window, layout[0]);
-        frame.render_widget(&self.insert_note_window, notes_layout[0]);
         frame.render_widget(&self.notes_window, notes_layout[1]);
+        match self.input_mode {
+            InputMode::Normal => frame.render_widget(&self.help_window, notes_layout[0]),
+            _ => frame.render_widget(&self.insert_note_window, notes_layout[0]),
+        }
         match self.input_mode {
             InputMode::Normal =>
                 // Hide the cursor. `Frame` does this by default, so we don't need to do anything here
                 {}
-    
+
             InputMode::Editing => {
                 // Make the cursor visible and ask ratatui to put it at the specified coordinates after
                 // rendering
@@ -99,7 +104,6 @@ impl TuiApp {
                 );
             }
         }
-
     }
 
     fn handle_events(&mut self) -> io::Result<()> {
@@ -130,7 +134,7 @@ impl TuiApp {
             KeyCode::Esc => self.input_mode = InputMode::Normal,
             _ => {
                 self.input_mode = self.insert_note_window.handle_key_event(key_event);
-            },
+            }
         }
     }
 
@@ -153,9 +157,7 @@ struct LastAppsWindow {
 
 impl LastAppsWindow {
     pub fn new(state_machine_tx: Sender<StateMachine>) -> LastAppsWindow {
-        LastAppsWindow {
-            state_machine_tx,
-        }
+        LastAppsWindow { state_machine_tx }
     }
 
     fn show_last_apps(&self, num: usize) -> Vec<ActiveProcessEvent> {
@@ -195,9 +197,7 @@ struct NotesWindow {
 
 impl NotesWindow {
     pub fn new(state_machine_tx: Sender<StateMachine>) -> NotesWindow {
-        NotesWindow {
-            state_machine_tx,
-        }
+        NotesWindow { state_machine_tx }
     }
 
     fn show_current(&self, num: usize) -> Option<(String, Vec<Note>)> {
@@ -216,10 +216,7 @@ impl NotesWindow {
                     ))
                     .unwrap();
                 let app_notes = rx.recv().expect("main thread is alive");
-                Some((
-                    title.to_owned(),
-                    app_notes.into_iter().take(num).collect(),
-                ))
+                Some((title.to_owned(), app_notes.into_iter().take(num).collect()))
             }
             None => None,
         }
@@ -252,6 +249,29 @@ impl Widget for &NotesWindow {
                     .render(area, buf);
             }
         }
+    }
+}
+
+struct HelpWindow {}
+
+impl HelpWindow {
+    pub fn new() -> HelpWindow {
+        HelpWindow {}
+    }
+}
+
+impl Widget for &HelpWindow {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let help_message = Line::from(
+            "i = enter insert mode; q = quit; ESC = escape insert mode; ENTER = add new note",
+        );
+        let title = Title::from(" help window ".bold());
+        let block = Block::bordered()
+            .title(title.alignment(Alignment::Center))
+            .border_set(border::THICK);
+        Paragraph::new(help_message)
+            .block(block)
+            .render(area, buf);
     }
 }
 
