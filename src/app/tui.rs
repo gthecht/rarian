@@ -50,14 +50,14 @@ pub struct TuiApp {
 }
 
 impl TuiApp {
-    pub fn new(state_machine_tx: Sender<StateMachine>, num: usize) -> TuiApp {
+    pub fn new(state_machine_tx: Sender<StateMachine>) -> TuiApp {
         TuiApp {
             state_machine_tx: state_machine_tx.clone(),
             exit: false,
             input_mode: InputMode::Normal,
             insert_note_window: InsertWindow::new(state_machine_tx.clone()),
-            notes_window: NotesWindow::new(state_machine_tx.clone(), num),
-            last_apps_window: LastAppsWindow::new(state_machine_tx.clone(), num),
+            notes_window: NotesWindow::new(state_machine_tx.clone()),
+            last_apps_window: LastAppsWindow::new(state_machine_tx.clone()),
         }
     }
 
@@ -149,31 +149,29 @@ impl TuiApp {
 
 struct LastAppsWindow {
     state_machine_tx: Sender<StateMachine>,
-    num: usize,
 }
 
 impl LastAppsWindow {
-    pub fn new(state_machine_tx: Sender<StateMachine>, num: usize) -> LastAppsWindow {
+    pub fn new(state_machine_tx: Sender<StateMachine>) -> LastAppsWindow {
         LastAppsWindow {
             state_machine_tx,
-            num,
         }
     }
 
-    fn show_last_apps(&self) -> Vec<ActiveProcessEvent> {
+    fn show_last_apps(&self, num: usize) -> Vec<ActiveProcessEvent> {
         let (tx, rx) = channel::<Vec<ActiveProcessEvent>>();
         self.state_machine_tx
-            .send(StateMachine::RecentApps(self.num, tx))
+            .send(StateMachine::RecentApps(num, tx))
             .unwrap();
         let last_processes = rx.recv().expect("main thread is alive");
-        last_processes.into_iter().take(self.num).collect()
+        last_processes.into_iter().take(num).collect()
     }
 }
 
 impl Widget for &LastAppsWindow {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let title = " latest apps ";
-        let last_apps = self.show_last_apps();
+        let last_apps = self.show_last_apps(area.rows().count() - 2);
         let list = last_apps
             .iter()
             .map(|app_window| app_window.get_title())
@@ -193,18 +191,16 @@ impl Widget for &LastAppsWindow {
 
 struct NotesWindow {
     state_machine_tx: Sender<StateMachine>,
-    num: usize,
 }
 
 impl NotesWindow {
-    pub fn new(state_machine_tx: Sender<StateMachine>, num: usize) -> NotesWindow {
+    pub fn new(state_machine_tx: Sender<StateMachine>) -> NotesWindow {
         NotesWindow {
             state_machine_tx,
-            num,
         }
     }
 
-    fn show_current(&self) -> Option<(String, Vec<Note>)> {
+    fn show_current(&self, num: usize) -> Option<(String, Vec<Note>)> {
         let (tx, rx) = channel::<Option<ActiveProcessEvent>>();
         self.state_machine_tx
             .send(StateMachine::CurrentApp(tx))
@@ -222,7 +218,7 @@ impl NotesWindow {
                 let app_notes = rx.recv().expect("main thread is alive");
                 Some((
                     title.to_owned(),
-                    app_notes.into_iter().take(self.num).collect(),
+                    app_notes.into_iter().take(num).collect(),
                 ))
             }
             None => None,
@@ -232,7 +228,7 @@ impl NotesWindow {
 
 impl Widget for &NotesWindow {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        match self.show_current() {
+        match self.show_current(area.rows().count() - 2) {
             Some((title, notes)) => {
                 let title = format!(" {} ", title);
                 let block = Block::bordered()
@@ -261,7 +257,7 @@ impl Widget for &NotesWindow {
 
 pub fn run_app(state_machine_tx: Sender<StateMachine>) {
     let mut terminal = init().expect("crossterm init failed");
-    let mut tui_app = TuiApp::new(state_machine_tx, 10);
+    let mut tui_app = TuiApp::new(state_machine_tx);
     tui_app.run(&mut terminal).expect("app run failed");
     restore().expect("terminal restore failed");
 }

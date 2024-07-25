@@ -36,6 +36,11 @@ impl InsertWindow {
         self.character_index = self.clamp_cursor(cursor_moved_right);
     }
 
+    fn move_cursor_to_end(&mut self) {
+        let cursor_moved_to_end = self.input.len();
+        self.character_index = self.clamp_cursor(cursor_moved_to_end);
+    }
+
     fn enter_char(&mut self, new_char: char) {
         let index = self.byte_index();
         self.input.insert(index, new_char);
@@ -57,6 +62,11 @@ impl InsertWindow {
     fn move_cursor_left(&mut self) {
         let cursor_moved_left = self.character_index.saturating_sub(1);
         self.character_index = self.clamp_cursor(cursor_moved_left);
+    }
+
+    fn move_cursor_home(&mut self) {
+        let cursor_moved_home = 0;
+        self.character_index = self.clamp_cursor(cursor_moved_home);
     }
 
     fn delete_char(&mut self) {
@@ -135,6 +145,14 @@ impl InsertWindow {
             }
             KeyCode::Right => {
                 self.move_cursor_right();
+                InputMode::Editing
+            }
+            KeyCode::End => {
+                self.move_cursor_to_end();
+                InputMode::Editing
+            }
+            KeyCode::Home => {
+                self.move_cursor_home();
                 InputMode::Editing
             }
             KeyCode::Esc => InputMode::Normal,
