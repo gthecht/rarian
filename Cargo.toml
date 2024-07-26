@@ -1,7 +1,11 @@
 [package]
+description = "Manage and link notes, work and collaboration"
 name = "rarian"
 version = "0.1.0"
 edition = "2021"
+authors = ["giladh"]
+repository = "https://github.com/gthecht/rarian"
+license-file = "LICENSE"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
