@@ -119,14 +119,14 @@ impl ActiveProcessGatherer {
         }
     }
 
-    pub fn update_current_and_cache(&mut self, new_process: ActiveProcessEvent) {
+    pub fn update_current_and_cache(&mut self, new_process: Option<ActiveProcessEvent>) {
         let mut current_process = self.current.lock().unwrap();
         if let Some(ref mut current) = *current_process {
             self.cacher.cache(current).expect("cache event failed");
             let mut process_events = self.process_events.lock().unwrap();
             process_events.push(current.clone());
         }
-        *current_process = Some(new_process);
+        *current_process = new_process;
     }
 }
 
@@ -172,13 +172,16 @@ fn monitor_processes(
         sys.refresh_processes_specifics(ProcessRefreshKind::new());
 
         active_process_gatherer.update_active_duration();
-        if let Some(active_process) = get_active_process(&sys) {
-            if !active_process_gatherer.is_current_process(&active_process) {
-                let new_process = ActiveProcessEvent::new(active_process);
-                active_process_gatherer.update_current_and_cache(new_process);
+        match get_active_process(&sys) {
+            Some(active_process) => {
+                if !active_process_gatherer.is_current_process(&active_process) {
+                    let new_process = ActiveProcessEvent::new(active_process);
+                    active_process_gatherer.update_current_and_cache(Some(new_process));
+                }
             }
-        } else {
-            println!("no active process");
+            None => {
+                active_process_gatherer.update_current_and_cache(None);
+            }
         }
     }
     println!("process monitor stopping gracefully");
