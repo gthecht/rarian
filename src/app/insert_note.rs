@@ -5,6 +5,7 @@ use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
     layout::{Alignment, Rect},
     style::Stylize,
+    symbols::border,
     text::{Line, Text},
     widgets::{block::Title, Block, Paragraph, Widget},
 };
@@ -164,7 +165,9 @@ impl InsertWindow {
 impl Widget for &InsertWindow {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let title = Title::from(" new note ".bold());
-        let block = Block::bordered().title(title.alignment(Alignment::Center));
+        let block = Block::bordered()
+            .title(title.alignment(Alignment::Center))
+            .border_set(border::THICK);
         Paragraph::new(Text::from(Line::from(self.input.as_str())))
             .block(block)
             .render(area, buf);
