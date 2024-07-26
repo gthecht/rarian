@@ -1,6 +1,8 @@
 use crate::cacher::{Cache, FileCacher, LoadFromCache};
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashMap,
+    hash::Hash,
     path::{Path, PathBuf},
     time::SystemTime,
 };
@@ -47,14 +49,18 @@ impl Note {
 
 pub struct NoteTaker {
     cacher: FileCacher,
-    notes: Vec<Note>,
+    notes: HashMap<Ulid, Note>,
 }
 
 impl NoteTaker {
     pub fn new(data_path: &Path) -> Self {
         let data_path: PathBuf = PathBuf::from(data_path).join("notes.json");
         let mut cacher = FileCacher::new(data_path);
-        let notes: Vec<Note> = cacher.load_from_cache();
+        let notes_from_cache: Vec<Note> = cacher.load_from_cache();
+        let notes: HashMap<Ulid, Note> = notes_from_cache
+            .into_iter()
+            .map(|note| (note.id, note))
+            .collect();
         let note_taker = NoteTaker { cacher, notes };
         return note_taker;
     }
@@ -63,18 +69,20 @@ impl NoteTaker {
         let links = links.into_iter().map(|l| Link::new(l, 1)).collect();
         let note = Note::new(text, links);
         self.cacher.cache(&note).expect("cache event failed");
-        self.notes.push(note);
+        self.notes.insert(note.id, note);
     }
 
     pub fn get_app_notes(&self, link: &str) -> Vec<Note> {
-        self.notes
-            .iter()
+        let mut notes_vec: Vec<Note> = self
+            .notes
+            .values()
             .filter(|note| {
                 (note.links.iter().any(|l| l.link == link)) && (note.status == NoteStatus::Active)
             })
-            .rev()
             .cloned()
-            .collect()
+            .collect();
+        notes_vec.sort_by(|a, b| b.creation_date.cmp(&a.creation_date));
+        notes_vec
     }
 
     pub fn archive_note(&self, link: &str) {
