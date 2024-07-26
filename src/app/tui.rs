@@ -359,7 +359,7 @@ impl HelpWindow {
 impl Widget for &HelpWindow {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let help_message = Line::from(
-            "i = enter insert mode; q = quit; ESC = escape insert mode; ENTER = add new note",
+            "i = insert note; q = quit; ESC = view mode; ENTER = add new note; ↓↑ jk = select items in list; e = edit selected note; a = archive selected note",
         );
         let title = Title::from(" help window ".bold());
         let block = Block::bordered()
