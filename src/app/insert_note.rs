@@ -95,6 +95,14 @@ impl InsertWindow {
         }
     }
 
+    fn delete_char_forward(&mut self) {
+        let current_character_index = self.character_index;
+        self.move_cursor_right();
+        if self.character_index > current_character_index {
+            self.delete_char();
+        }
+    }
+
     fn clamp_cursor(&self, new_cursor_pos: usize) -> usize {
         new_cursor_pos.clamp(0, self.input.chars().count())
     }
@@ -154,6 +162,10 @@ impl InsertWindow {
             }
             KeyCode::Backspace => {
                 self.delete_char();
+                InputMode::Editing
+            }
+            KeyCode::Delete => {
+                self.delete_char_forward();
                 InputMode::Editing
             }
             KeyCode::Left => {
