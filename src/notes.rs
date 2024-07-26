@@ -1,4 +1,5 @@
 use crate::cacher::{Cache, FileCacher, LoadFromCache};
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -58,6 +59,7 @@ impl NoteTaker {
         let notes_from_cache: Vec<Note> = cacher.load_from_cache();
         let notes: HashMap<Ulid, Note> = notes_from_cache
             .into_iter()
+            .sorted_by(|a, b| a.creation_date.cmp(&b.creation_date))
             .map(|note| (note.id, note))
             .collect();
         let note_taker = NoteTaker { cacher, notes };
@@ -101,6 +103,7 @@ impl NoteTaker {
             Some(note) => {
                 let mut note = note.to_owned();
                 note.text = text.to_string();
+                note.creation_date = SystemTime::now();
                 self.cacher.cache(&note).expect("cache event failed");
                 self.notes.insert(note.id, note);
             }
