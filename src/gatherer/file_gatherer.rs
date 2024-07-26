@@ -108,7 +108,6 @@ fn check_for_notes(state_machine_tx: Sender<StateMachine>, file_event: notify::E
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {}
                 Err(err) => {
-                    println!("failed parsing file: {}", err);
                     panic!("failed to parse file: {}", err)
                 }
             }
