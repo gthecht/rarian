@@ -1,6 +1,7 @@
 use std::{
     fs::create_dir_all,
-    sync::mpsc::{channel, Sender}, thread::spawn,
+    sync::mpsc::{channel, Sender},
+    thread::spawn,
 };
 
 mod app;
@@ -35,8 +36,8 @@ fn main() {
     let (action_tx, action_rx) = channel::<StateMachine>();
     let file_gatherer = FileGatherer::new(action_tx.clone(), file_paths, data_path);
     let app_thread = spawn(move || {
-            run_app(action_tx.clone());
-        });
+        run_app(action_tx.clone());
+    });
 
     use StateMachine::*;
     loop {

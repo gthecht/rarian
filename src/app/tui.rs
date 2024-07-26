@@ -269,9 +269,7 @@ impl Widget for &HelpWindow {
         let block = Block::bordered()
             .title(title.alignment(Alignment::Center))
             .border_set(border::THICK);
-        Paragraph::new(help_message)
-            .block(block)
-            .render(area, buf);
+        Paragraph::new(help_message).block(block).render(area, buf);
     }
 }
 

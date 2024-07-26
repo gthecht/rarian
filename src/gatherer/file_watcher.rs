@@ -8,7 +8,8 @@ fn watch_dir(
     full_path: PathBuf,
     tx: Sender<Result<notify::Event, notify::Error>>,
 ) -> notify::RecommendedWatcher {
-    let mut watcher = RecommendedWatcher::new(tx, Config::default()).expect("watcher creation failed");
+    let mut watcher =
+        RecommendedWatcher::new(tx, Config::default()).expect("watcher creation failed");
     watcher
         .watch(full_path.as_ref(), RecursiveMode::Recursive)
         .expect("watcher watching failed");
