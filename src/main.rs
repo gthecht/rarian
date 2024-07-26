@@ -15,12 +15,14 @@ use crate::gatherer::file_gatherer::FileGatherer;
 use directories::{BaseDirs, ProjectDirs};
 use gatherer::app_gatherer::ActiveProcessEvent;
 use notes::{Note, NoteTaker};
+use ulid::Ulid;
 
 pub enum StateMachine {
     RecentApps(usize, Sender<Vec<ActiveProcessEvent>>),
     CurrentApp(Sender<Option<ActiveProcessEvent>>),
     GetAppNotes(String, Sender<Vec<Note>>),
     NewNote(String, Vec<String>),
+    ArchiveNote(Ulid),
     Quit,
 }
 
@@ -53,6 +55,9 @@ fn main() {
             }
             Ok(NewNote(text, links)) => {
                 note_taker.add_note(&text, links);
+            }
+            Ok(ArchiveNote(note_id)) => {
+                note_taker.archive_note(&note_id)
             }
             Ok(Quit) => break,
             Err(err) => {

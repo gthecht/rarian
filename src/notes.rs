@@ -2,7 +2,6 @@ use crate::cacher::{Cache, FileCacher, LoadFromCache};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
-    hash::Hash,
     path::{Path, PathBuf},
     time::SystemTime,
 };
@@ -28,7 +27,7 @@ impl Link {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Note {
-    id: Ulid,
+    pub id: Ulid,
     links: Vec<Link>,
     pub text: String,
     creation_date: SystemTime,
@@ -85,8 +84,16 @@ impl NoteTaker {
         notes_vec
     }
 
-    pub fn archive_note(&self, link: &str) {
-        todo!()
+    pub fn archive_note(&mut self, note_id: &Ulid) {
+        match self.notes.get(note_id) {
+            Some(note) => {
+                let mut note = note.to_owned();
+                note.status = NoteStatus::Archived;
+                self.cacher.cache(&note).expect("cache event failed");
+                self.notes.insert(note.id, note);
+            },
+            None => println!("could not find note with id {}", note_id)
+        }
     }
 
     pub fn edit_note(&self, link: &str) {

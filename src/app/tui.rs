@@ -12,10 +12,12 @@ use ratatui::{
         terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     },
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Modifier, Style, Stylize},
+    style::{palette::tailwind::{BLUE, SLATE}, Color, Modifier, Style, Stylize},
     symbols::border,
-    text::{Line, Text},
-    widgets::{block::Title, Block, List, Paragraph, Widget},
+    text::Line,
+    widgets::{
+        block::Title, Block, HighlightSpacing, List, ListItem, ListState, Paragraph, StatefulWidget, Widget
+    },
     Frame, Terminal,
 };
 
@@ -65,13 +67,14 @@ impl TuiApp {
 
     pub fn run(&mut self, terminal: &mut Tui) -> io::Result<()> {
         while !self.exit {
+            self.notes_window.get_current_notes_and_window();
             terminal.draw(|frame| self.render_frame(frame))?;
             self.handle_events()?;
         }
         Ok(())
     }
 
-    fn render_frame(&self, frame: &mut Frame) {
+    fn render_frame(&mut self, frame: &mut Frame) {
         let layout = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(vec![Constraint::Percentage(30), Constraint::Percentage(70)])
@@ -81,10 +84,10 @@ impl TuiApp {
             .constraints(vec![Constraint::Percentage(20), Constraint::Percentage(80)])
             .split(layout[1]);
         frame.render_widget(&self.last_apps_window, layout[0]);
-        frame.render_widget(&self.notes_window, notes_layout[1]);
+        frame.render_widget(&mut self.notes_window, notes_layout[1]);
         match self.input_mode {
             InputMode::Normal => frame.render_widget(&self.help_window, notes_layout[0]),
-            _ => frame.render_widget(&self.insert_note_window, notes_layout[0]),
+            InputMode::Editing => frame.render_widget(&self.insert_note_window, notes_layout[0]),
         }
         match self.input_mode {
             InputMode::Normal =>
@@ -125,6 +128,13 @@ impl TuiApp {
             KeyCode::Char('i') => self.input_mode = InputMode::Editing,
             KeyCode::Char('q') => self.exit(),
             KeyCode::Char('Q') => self.exit(),
+            KeyCode::Esc | KeyCode::Left => self.notes_window.select_none(),
+            KeyCode::Char('j') | KeyCode::Down => self.notes_window.select_next(),
+            KeyCode::Char('k') | KeyCode::Up => self.notes_window.select_previous(),
+            KeyCode::Char('g') | KeyCode::Home => self.notes_window.select_first(),
+            KeyCode::Char('G') | KeyCode::End => self.notes_window.select_last(),
+            KeyCode::Char('a') | KeyCode::Char('d') => self.notes_window.archive_selected(),
+            KeyCode::Char('e') | KeyCode::Enter => self.notes_window.edit_selected(),
             _ => {}
         }
     }
@@ -187,20 +197,28 @@ impl Widget for &LastAppsWindow {
             .highlight_symbol(">>")
             .repeat_highlight_symbol(true);
 
-        list.render(area, buf);
+        Widget::render(list, area, buf);
     }
 }
 
 struct NotesWindow {
     state_machine_tx: Sender<StateMachine>,
+    current_title: String,
+    current_notes: Vec<Note>,
+    selected_row: ListState,
 }
 
 impl NotesWindow {
     pub fn new(state_machine_tx: Sender<StateMachine>) -> NotesWindow {
-        NotesWindow { state_machine_tx }
+        NotesWindow {
+            state_machine_tx,
+            current_title: String::new(),
+            current_notes: Vec::new(),
+            selected_row: ListState::default(),
+        }
     }
 
-    fn show_current(&self, num: usize) -> Option<(String, Vec<Note>)> {
+    fn get_current_notes_and_window(&mut self) {
         let (tx, rx) = channel::<Option<ActiveProcessEvent>>();
         self.state_machine_tx
             .send(StateMachine::CurrentApp(tx))
@@ -216,39 +234,102 @@ impl NotesWindow {
                     ))
                     .unwrap();
                 let app_notes = rx.recv().expect("main thread is alive");
-                Some((title.to_owned(), app_notes.into_iter().take(num).collect()))
+                self.current_title = title.to_owned();
+                self.current_notes = app_notes.into_iter().collect();
             }
-            None => None,
+            None => {
+                self.current_title = "no app currently detected".to_string();
+                self.current_notes = Vec::new();
+            }
+        }
+    }
+
+    fn select_none(&mut self) {
+        self.selected_row.select(None);
+    }
+
+    fn select_next(&mut self) {
+        match self.selected_row.selected() {
+            Some(row) if row < self.current_notes.len() - 1 => self.selected_row.select_next(),
+            None if self.current_notes.len() > 0 => self.selected_row.select_next(),
+            _ => {}
+        }
+    }
+
+    fn select_previous(&mut self) {
+        match self.selected_row.selected() {
+            Some(row) if row > 0 => self.selected_row.select_previous(),
+            None if self.current_notes.len() > 0 => self.selected_row.select_previous(),
+            _ => {}
+        }
+    }
+
+    fn select_first(&mut self) {
+        match self.current_notes.len() {
+            l if l > 0 => self.selected_row.select_first(),
+            _ => {}
+        }
+    }
+
+    fn select_last(&mut self) {
+        match self.current_notes.len() {
+            l if l > 0 => self.selected_row.select(Some(l - 1)),
+            _ => {}
+        }
+    }
+
+    fn archive_selected(&self) {
+        match self.selected_row.selected() {
+            Some(row) => {
+                let note = self.current_notes.get(row).unwrap();
+                self.state_machine_tx
+                    .send(StateMachine::ArchiveNote(note.id))
+                    .unwrap();
+            }
+            None => {}
+        }
+    }
+
+    fn edit_selected(&self) {
+        todo!()
+    }
+
+    fn alternate_colors(&self, i: usize) -> Color {
+        const NORMAL_ROW_BG: Color = SLATE.c900;
+        const ALT_ROW_BG_COLOR: Color = SLATE.c800;
+        if i % 2 == 0 {
+            NORMAL_ROW_BG
+        } else {
+            ALT_ROW_BG_COLOR
         }
     }
 }
 
-impl Widget for &NotesWindow {
+impl Widget for &mut NotesWindow {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        match self.show_current(area.rows().count() - 2) {
-            Some((title, notes)) => {
-                let title = format!(" {} ", title);
-                let block = Block::bordered()
-                    .title(Title::from(title.bold()).alignment(Alignment::Center))
-                    .border_set(border::THICK);
+        let title = format!(" {} ", self.current_title);
+        let block = Block::bordered()
+            .title(Title::from(title.bold()).alignment(Alignment::Center))
+            .border_set(border::THICK);
+        let num = area.rows().count() - 2;
+        let list_of_notes: Vec<ListItem> = self
+            .current_notes
+            .iter()
+            .take(num)
+            .enumerate()
+            .map(|(i, note)| {
+                let color = self.alternate_colors(i);
+                ListItem::from(format!(" - {}", note.text)).bg(color)
+            })
+            .collect();
 
-                let notes_text = notes
-                    .iter()
-                    .map(|note| Line::from(format!(" - {}", note.text.clone())))
-                    .collect::<Vec<Line>>();
-                Paragraph::new(notes_text).block(block).render(area, buf);
-            }
-            None => {
-                let title = Title::from(" no app currently detected ".bold());
-                let block = Block::bordered()
-                    .title(title.alignment(Alignment::Center))
-                    .border_set(border::THICK);
-                Paragraph::new(Text::default())
-                    .centered()
-                    .block(block)
-                    .render(area, buf);
-            }
-        }
+        const SELECTED_STYLE: Style = Style::new().bg(BLUE.c800).add_modifier(Modifier::BOLD);
+        let list = List::new(list_of_notes)
+            .block(block)
+            .highlight_style(SELECTED_STYLE)
+            .highlight_symbol(">")
+            .highlight_spacing(HighlightSpacing::Always);
+        StatefulWidget::render(list, area, buf, &mut self.selected_row);
     }
 }
 
