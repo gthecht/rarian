@@ -1,7 +1,7 @@
 [package]
 description = "Manage and link notes, work and collaboration"
 name = "rarian"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 authors = ["giladh"]
 repository = "https://github.com/gthecht/rarian"
