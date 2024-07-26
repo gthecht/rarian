@@ -332,7 +332,7 @@ impl Widget for &mut NotesWindow {
             .enumerate()
             .map(|(i, note)| {
                 let color = self.alternate_colors(i);
-                ListItem::from(format!(" - {}", note.text)).bg(color)
+                ListItem::from(note.text.clone()).bg(color)
             })
             .collect();
 
@@ -341,7 +341,7 @@ impl Widget for &mut NotesWindow {
             .block(block)
             .scroll_padding(1)
             .highlight_style(SELECTED_STYLE)
-            .highlight_symbol(">")
+            .highlight_symbol("> ")
             .highlight_spacing(HighlightSpacing::Always);
         StatefulWidget::render(list, area, buf, &mut self.selected_row);
     }
