@@ -326,11 +326,9 @@ impl Widget for &mut NotesWindow {
         let block = Block::bordered()
             .title(Title::from(title.bold()).alignment(Alignment::Center))
             .border_set(border::THICK);
-        let num = area.rows().count() - 2;
         let list_of_notes: Vec<ListItem> = self
             .current_notes
             .iter()
-            .take(num)
             .enumerate()
             .map(|(i, note)| {
                 let color = self.alternate_colors(i);
@@ -341,6 +339,7 @@ impl Widget for &mut NotesWindow {
         const SELECTED_STYLE: Style = Style::new().bg(BLUE.c800).add_modifier(Modifier::BOLD);
         let list = List::new(list_of_notes)
             .block(block)
+            .scroll_padding(1)
             .highlight_style(SELECTED_STYLE)
             .highlight_symbol(">")
             .highlight_spacing(HighlightSpacing::Always);
