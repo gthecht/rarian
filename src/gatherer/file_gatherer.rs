@@ -88,11 +88,14 @@ fn check_for_notes(state_machine_tx: Sender<StateMachine>, file_event: notify::E
                         {
                             if let Ok(_) = write_file.write_all(new_file_text.as_bytes()) {
                                 notes.into_iter().for_each(|note| {
+                                    let mut links: Vec<String> = file_event
+                                        .paths
+                                        .iter()
+                                        .map(|p| p.to_string_lossy().to_string())
+                                        .collect();
+                                    links.push(process.get_title().to_string());
                                     state_machine_tx
-                                        .send(StateMachine::NewNote(
-                                            note.trim().to_string(),
-                                            process.get_title().to_string(),
-                                        ))
+                                        .send(StateMachine::NewNote(note.trim().to_string(), links))
                                         .unwrap();
                                 })
                             } else {

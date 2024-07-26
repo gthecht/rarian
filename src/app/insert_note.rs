@@ -116,7 +116,7 @@ impl InsertWindow {
                 self.state_machine_tx
                     .send(StateMachine::NewNote(
                         self.input.clone().trim().to_string(),
-                        current.get_title().to_string(),
+                        vec![current.get_title().to_string()],
                     ))
                     .unwrap();
             }

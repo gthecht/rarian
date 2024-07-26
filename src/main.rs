@@ -19,7 +19,7 @@ pub enum StateMachine {
     RecentApps(usize, Sender<Vec<ActiveProcessEvent>>),
     CurrentApp(Sender<Option<ActiveProcessEvent>>),
     GetAppNotes(String, Sender<Vec<Note>>),
-    NewNote(String, String),
+    NewNote(String, Vec<String>),
     Quit,
 }
 
@@ -50,8 +50,8 @@ fn main() {
             Ok(GetAppNotes(link, tx)) => {
                 let _ = tx.send(note_taker.get_app_notes(&link));
             }
-            Ok(NewNote(text, link)) => {
-                note_taker.add_note(&text, &link);
+            Ok(NewNote(text, links)) => {
+                note_taker.add_note(&text, links);
             }
             Ok(Quit) => break,
             Err(err) => {
