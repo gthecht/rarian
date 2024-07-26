@@ -23,6 +23,7 @@ pub enum StateMachine {
     GetAppNotes(String, Sender<Vec<Note>>),
     NewNote(String, Vec<String>),
     ArchiveNote(Ulid),
+    EditNote(Ulid, String),
     Quit,
 }
 
@@ -56,9 +57,8 @@ fn main() {
             Ok(NewNote(text, links)) => {
                 note_taker.add_note(&text, links);
             }
-            Ok(ArchiveNote(note_id)) => {
-                note_taker.archive_note(&note_id)
-            }
+            Ok(ArchiveNote(note_id)) => note_taker.archive_note(&note_id),
+            Ok(EditNote(note_id, text)) => note_taker.edit_note(&note_id, &text),
             Ok(Quit) => break,
             Err(err) => {
                 println!("action error: {}", err);

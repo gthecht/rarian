@@ -9,6 +9,7 @@ use ratatui::{
     text::{Line, Text},
     widgets::{block::Title, Block, Paragraph, Widget},
 };
+use ulid::Ulid;
 
 use crate::{gatherer::app_gatherer::ActiveProcessEvent, StateMachine};
 
@@ -19,8 +20,9 @@ pub enum InputMode {
 
 pub struct InsertWindow {
     state_machine_tx: Sender<StateMachine>,
-    input: String,
+    pub input: String,
     pub character_index: usize,
+    pub editing_note: Option<Ulid>,
 }
 
 impl InsertWindow {
@@ -29,6 +31,7 @@ impl InsertWindow {
             state_machine_tx,
             input: String::new(),
             character_index: 0,
+            editing_note: None,
         }
     }
 
@@ -101,9 +104,13 @@ impl InsertWindow {
     }
 
     fn submit_message(&mut self) {
-        self.new_note();
+        match self.editing_note {
+            Some(note_id) => self.edit_note(note_id),
+            None => self.new_note(),
+        }
         self.input.clear();
         self.reset_cursor();
+        self.editing_note = None;
     }
 
     fn new_note(&self) {
@@ -124,6 +131,15 @@ impl InsertWindow {
                 println!("What do we do when there is no current process?");
             }
         }
+    }
+
+    fn edit_note(&self, note_id: Ulid) {
+        self.state_machine_tx
+            .send(StateMachine::EditNote(
+                note_id,
+                self.input.clone().trim().to_string(),
+            ))
+            .unwrap();
     }
 
     pub(crate) fn handle_key_event(&mut self, key_event: KeyEvent) -> InputMode {

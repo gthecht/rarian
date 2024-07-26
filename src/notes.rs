@@ -91,12 +91,20 @@ impl NoteTaker {
                 note.status = NoteStatus::Archived;
                 self.cacher.cache(&note).expect("cache event failed");
                 self.notes.insert(note.id, note);
-            },
-            None => println!("could not find note with id {}", note_id)
+            }
+            None => println!("could not find note with id {}", note_id),
         }
     }
 
-    pub fn edit_note(&self, link: &str) {
-        todo!()
+    pub fn edit_note(&mut self, note_id: &Ulid, text: &str) {
+        match self.notes.get(note_id) {
+            Some(note) => {
+                let mut note = note.to_owned();
+                note.text = text.to_string();
+                self.cacher.cache(&note).expect("cache event failed");
+                self.notes.insert(note.id, note);
+            }
+            None => println!("could not find note with id {}", note_id),
+        }
     }
 }

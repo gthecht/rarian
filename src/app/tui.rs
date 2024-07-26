@@ -12,11 +12,15 @@ use ratatui::{
         terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     },
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{palette::tailwind::{BLUE, SLATE}, Color, Modifier, Style, Stylize},
+    style::{
+        palette::tailwind::{BLUE, SLATE},
+        Color, Modifier, Style, Stylize,
+    },
     symbols::border,
     text::Line,
     widgets::{
-        block::Title, Block, HighlightSpacing, List, ListItem, ListState, Paragraph, StatefulWidget, Widget
+        block::Title, Block, HighlightSpacing, List, ListItem, ListState, Paragraph,
+        StatefulWidget, Widget,
     },
     Frame, Terminal,
 };
@@ -125,7 +129,10 @@ impl TuiApp {
 
     fn handle_normal_mode_key_event(&mut self, key_event: KeyEvent) {
         match key_event.code {
-            KeyCode::Char('i') => self.input_mode = InputMode::Editing,
+            KeyCode::Char('i') => {
+                self.input_mode = InputMode::Editing;
+                self.notes_window.select_none();
+            }
             KeyCode::Char('q') => self.exit(),
             KeyCode::Char('Q') => self.exit(),
             KeyCode::Esc | KeyCode::Left => self.notes_window.select_none(),
@@ -133,8 +140,8 @@ impl TuiApp {
             KeyCode::Char('k') | KeyCode::Up => self.notes_window.select_previous(),
             KeyCode::Char('g') | KeyCode::Home => self.notes_window.select_first(),
             KeyCode::Char('G') | KeyCode::End => self.notes_window.select_last(),
-            KeyCode::Char('a') | KeyCode::Char('d') => self.notes_window.archive_selected(),
-            KeyCode::Char('e') | KeyCode::Enter => self.notes_window.edit_selected(),
+            KeyCode::Char('a') | KeyCode::Char('d') => self.archive_selected(),
+            KeyCode::Char('e') | KeyCode::Enter => self.edit_selected(),
             _ => {}
         }
     }
@@ -152,6 +159,30 @@ impl TuiApp {
         match self.input_mode {
             InputMode::Normal => self.handle_normal_mode_key_event(key_event),
             InputMode::Editing => self.handle_editing_mode_key_event(key_event),
+        }
+    }
+
+    fn archive_selected(&self) {
+        match self.notes_window.selected_row.selected() {
+            Some(row) => {
+                let note = self.notes_window.current_notes.get(row).unwrap();
+                self.state_machine_tx
+                    .send(StateMachine::ArchiveNote(note.id))
+                    .unwrap();
+            }
+            None => {}
+        }
+    }
+
+    fn edit_selected(&mut self) {
+        match self.notes_window.selected_row.selected() {
+            Some(row) => {
+                let note = self.notes_window.current_notes.get(row).unwrap();
+                self.insert_note_window.editing_note = Some(note.id);
+                self.insert_note_window.input = note.text.clone();
+                self.input_mode = InputMode::Editing;
+            }
+            None => {}
         }
     }
 
@@ -276,22 +307,6 @@ impl NotesWindow {
             l if l > 0 => self.selected_row.select(Some(l - 1)),
             _ => {}
         }
-    }
-
-    fn archive_selected(&self) {
-        match self.selected_row.selected() {
-            Some(row) => {
-                let note = self.current_notes.get(row).unwrap();
-                self.state_machine_tx
-                    .send(StateMachine::ArchiveNote(note.id))
-                    .unwrap();
-            }
-            None => {}
-        }
-    }
-
-    fn edit_selected(&self) {
-        todo!()
     }
 
     fn alternate_colors(&self, i: usize) -> Color {
