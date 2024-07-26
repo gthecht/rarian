@@ -28,6 +28,7 @@ pub enum StateMachine {
 }
 
 fn main() {
+    change_window_title();
     let base_dirs = BaseDirs::new().unwrap();
     let file_paths = vec![base_dirs.home_dir().join("workspace")];
     let project_dir = ProjectDirs::from("", "Rarian", "rarian").unwrap();
@@ -68,4 +69,11 @@ fn main() {
     app_gatherer.close();
     file_gatherer.close();
     app_thread.join().unwrap();
+}
+
+fn change_window_title() {
+    print!("\x1b]0;Rarian app\x07");
+    // Flush the output to ensure the title is set immediately
+    use std::io::{self, Write};
+    io::stdout().flush().unwrap();
 }

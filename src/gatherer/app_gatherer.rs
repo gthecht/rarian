@@ -175,6 +175,9 @@ fn monitor_processes(
         match get_active_process(&sys) {
             Some(active_process) => {
                 if !active_process_gatherer.is_current_process(&active_process) {
+                    if active_process.title == "Rarian app" {
+                        continue
+                    }
                     let new_process = ActiveProcessEvent::new(active_process);
                     active_process_gatherer.update_current_and_cache(Some(new_process));
                 }
