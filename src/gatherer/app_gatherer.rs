@@ -25,9 +25,10 @@ pub struct ActiveProcess {
 
 impl ActiveProcess {
     fn new(active_window: ActiveWindow, process: &Process) -> ActiveProcess {
-        let title = active_window.title.trim_start_matches("● ").to_string();
-        let process_path = active_window.process_path;
         let app_name = active_window.app_name;
+        let mut title = active_window.title.trim_start_matches("● ").to_string();
+        if title == "" { title = app_name.clone(); }
+        let process_path = active_window.process_path;
         let window_id = active_window.window_id;
 
         let process_id: usize = active_window
