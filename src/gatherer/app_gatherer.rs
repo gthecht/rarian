@@ -167,6 +167,7 @@ fn monitor_processes(
     let mut sys = init_system();
     let mut active_process_gatherer = ActiveProcessGatherer::new(current, process_events, cacher);
 
+    const IGNORE_APPS: [&str; 3] = ["Rarian app", "Task Switching", ""];
     while let Err(_) = gatherer_rx.try_recv() {
         sleep(duration());
         sys.refresh_processes_specifics(ProcessRefreshKind::new());
@@ -175,7 +176,7 @@ fn monitor_processes(
         match get_active_process(&sys) {
             Some(active_process) => {
                 if !active_process_gatherer.is_current_process(&active_process) {
-                    if active_process.title == "Rarian app" {
+                    if IGNORE_APPS.contains(&active_process.title.as_str()) {
                         continue
                     }
                     let new_process = ActiveProcessEvent::new(active_process);
