@@ -52,63 +52,64 @@ fn create_file_watchers(
 fn check_for_notes(state_machine_tx: Sender<StateMachine>, file_event: notify::Event) {
     file_event.paths.iter().for_each(|path| {
         if path.is_file() {
-            let mut file = OpenOptions::new()
-                .read(true)
-                .open(path)
-                .expect("is openable file");
-            let mut read_buffer = String::new();
-            match file.read_to_string(&mut read_buffer) {
-                Ok(_) => {
-                    let comment_identifier = str::from_utf8(&[64, 35, 36]).unwrap(); // wrote the string in bytes so that they won't be misinterpreted as part of a note 😅
-                    let split_file: Vec<&str> =
-                        read_buffer.trim().split(comment_identifier).collect();
-                    if split_file.len() > 1 && split_file.len() % 2 == 1 {
-                        let mut file_text = Vec::<&str>::new();
-                        let mut notes = Vec::<&str>::new();
-                        split_file
-                            .into_iter()
-                            .enumerate()
-                            .for_each(|(index, text)| {
-                                if index % 2 == 0 {
-                                    file_text.push(text);
+            if let Ok(mut file) = OpenOptions::new().read(true).open(path) {
+                let mut read_buffer = String::new();
+                match file.read_to_string(&mut read_buffer) {
+                    Ok(_) => {
+                        let comment_identifier = str::from_utf8(&[64, 35, 36]).unwrap(); // wrote the string in bytes so that they won't be misinterpreted as part of a note 😅
+                        let split_file: Vec<&str> =
+                            read_buffer.trim().split(comment_identifier).collect();
+                        if split_file.len() > 1 && split_file.len() % 2 == 1 {
+                            let mut file_text = Vec::<&str>::new();
+                            let mut notes = Vec::<&str>::new();
+                            split_file
+                                .into_iter()
+                                .enumerate()
+                                .for_each(|(index, text)| {
+                                    if index % 2 == 0 {
+                                        file_text.push(text);
+                                    } else {
+                                        notes.push(text);
+                                    }
+                                });
+                            let (tx, rx) = channel::<Option<ActiveProcessEvent>>();
+                            state_machine_tx.send(StateMachine::CurrentApp(tx)).unwrap();
+                            let process = rx
+                                .recv()
+                                .expect("main thread is alive")
+                                .expect("there must be a process for file changes");
+                            let mut new_file_text = file_text.into_iter().map(|text| text).join("");
+                            new_file_text.push_str("\n");
+                            if let Ok(mut write_file) =
+                                OpenOptions::new().truncate(true).write(true).open(path)
+                            {
+                                if let Ok(_) = write_file.write_all(new_file_text.as_bytes()) {
+                                    notes.into_iter().for_each(|note| {
+                                        let mut links: Vec<String> = file_event
+                                            .paths
+                                            .iter()
+                                            .map(|p| p.to_string_lossy().to_string())
+                                            .collect();
+                                        links.push(process.get_title().to_string());
+                                        state_machine_tx
+                                            .send(StateMachine::NewNote(
+                                                note.trim().to_string(),
+                                                links,
+                                            ))
+                                            .unwrap();
+                                    })
                                 } else {
-                                    notes.push(text);
+                                    println!("failed to write to file will try again next time");
                                 }
-                            });
-                        let (tx, rx) = channel::<Option<ActiveProcessEvent>>();
-                        state_machine_tx.send(StateMachine::CurrentApp(tx)).unwrap();
-                        let process = rx
-                            .recv()
-                            .expect("main thread is alive")
-                            .expect("there must be a process for file changes");
-                        let mut new_file_text = file_text.into_iter().map(|text| text).join("");
-                        new_file_text.push_str("\n");
-                        if let Ok(mut write_file) =
-                            OpenOptions::new().truncate(true).write(true).open(path)
-                        {
-                            if let Ok(_) = write_file.write_all(new_file_text.as_bytes()) {
-                                notes.into_iter().for_each(|note| {
-                                    let mut links: Vec<String> = file_event
-                                        .paths
-                                        .iter()
-                                        .map(|p| p.to_string_lossy().to_string())
-                                        .collect();
-                                    links.push(process.get_title().to_string());
-                                    state_machine_tx
-                                        .send(StateMachine::NewNote(note.trim().to_string(), links))
-                                        .unwrap();
-                                })
                             } else {
-                                println!("failed to write to file will try again next time");
+                                println!("Error opening file for writing: {:?}", path)
                             }
-                        } else {
-                            println!("Error opening file for writing: {:?}", path)
                         }
                     }
-                }
-                Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {}
-                Err(err) => {
-                    panic!("failed to parse file: {}", err)
+                    Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {}
+                    Err(err) => {
+                        panic!("failed to parse file: {}", err)
+                    }
                 }
             }
         }
