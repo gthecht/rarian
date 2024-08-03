@@ -20,7 +20,7 @@ use ratatui::{
     text::Line,
     widgets::{
         block::Title, Block, HighlightSpacing, List, ListItem, ListState, Paragraph,
-        StatefulWidget, Widget,
+        StatefulWidget, Widget, Wrap,
     },
     Frame, Terminal,
 };
@@ -357,14 +357,25 @@ impl HelpWindow {
 
 impl Widget for &HelpWindow {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let help_message = Line::from(
-            "i = insert note; q = quit; ESC = view mode; ENTER = add new note; ↓↑ jk = select items in list; e = edit selected note; a = archive selected note",
-        );
+        let help_messages = vec![
+            "i = insert note",
+            "q = quit",
+            "ESC = view mode",
+            "ENTER = add new note",
+            "↓↑/jk = select items in list",
+            "e = edit selected note",
+            "a/d = archive selected note",
+            "edit the config in %appdata%/Rarian/rarian/data",
+        ];
+        let help_message_line = Line::from(help_messages.join("; "));
         let title = Title::from(" help window ".bold());
         let block = Block::bordered()
             .title(title.alignment(Alignment::Center))
             .border_set(border::THICK);
-        Paragraph::new(help_message).block(block).render(area, buf);
+        Paragraph::new(help_message_line)
+            .block(block)
+            .wrap(Wrap { trim: true })
+            .render(area, buf);
     }
 }
 
