@@ -2,6 +2,7 @@ use anyhow;
 use clap::Parser;
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
+use std::str;
 use std::{
     fs::{create_dir_all, File},
     io::BufReader,
@@ -19,6 +20,7 @@ struct Args {
 pub struct Config {
     pub data_path: PathBuf,
     pub watcher_paths: Vec<PathBuf>,
+    pub comment_identifier: String,
 }
 
 impl Config {
@@ -30,8 +32,8 @@ impl Config {
         });
         create_dir_all(&data_path).expect("Creating the project directories in Roaming failed");
         let config_path = data_path.join("config.json");
-        println!("{:?}", config_path);
 
+        let comment_identifier = vec!["@", "#", "$"].join("");
         match Self::read_config_from_file(config_path) {
             Ok(config) => config,
             Err(_) => {
@@ -39,6 +41,7 @@ impl Config {
                 Config {
                     data_path: data_path.to_path_buf(),
                     watcher_paths: vec![],
+                    comment_identifier,
                 }
             }
         }

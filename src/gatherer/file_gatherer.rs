@@ -2,17 +2,17 @@ use itertools::Itertools;
 use notify::event::ModifyKind;
 use notify::EventKind;
 use serde_json::{self, Value};
-use std::str;
 extern crate notify;
 use anyhow::Result;
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::{spawn, JoinHandle};
 use std::time::SystemTime;
 
 use crate::cacher::{Cache, FileCacher};
+use crate::config::Config;
 use crate::gatherer::app_gatherer::ActiveProcessEvent;
 use crate::gatherer::file_watcher::watch_dir_thread;
 use crate::StateMachine;
@@ -49,14 +49,17 @@ fn create_file_watchers(
     return file_watcher_threads;
 }
 
-fn check_for_notes(state_machine_tx: Sender<StateMachine>, file_event: notify::Event) {
+fn check_for_notes(
+    comment_identifier: &str,
+    state_machine_tx: Sender<StateMachine>,
+    file_event: notify::Event,
+) {
     file_event.paths.iter().for_each(|path| {
         if path.is_file() {
             if let Ok(mut file) = OpenOptions::new().read(true).open(path) {
                 let mut read_buffer = String::new();
                 match file.read_to_string(&mut read_buffer) {
                     Ok(_) => {
-                        let comment_identifier = str::from_utf8(&[64, 35, 36]).unwrap(); // wrote the string in bytes so that they won't be misinterpreted as part of a note 😅
                         let split_file: Vec<&str> =
                             read_buffer.trim().split(comment_identifier).collect();
                         if split_file.len() > 1 && split_file.len() % 2 == 1 {
@@ -116,10 +119,14 @@ fn check_for_notes(state_machine_tx: Sender<StateMachine>, file_event: notify::E
     });
 }
 
-fn act_on_event(state_machine_tx: Sender<StateMachine>, file_event: notify::Event) {
+fn act_on_event(
+    comment_identifier: &str,
+    state_machine_tx: Sender<StateMachine>,
+    file_event: notify::Event,
+) {
     match file_event.kind {
         EventKind::Modify(ModifyKind::Any | ModifyKind::Data(_) | ModifyKind::Other) => {
-            check_for_notes(state_machine_tx, file_event)
+            check_for_notes(comment_identifier, state_machine_tx, file_event)
         }
         _ => {}
     }
@@ -129,6 +136,7 @@ fn create_caching_thread(
     state_machine_tx: Sender<StateMachine>,
     notify_rx: Receiver<Result<notify::Event, notify::Error>>,
     data_path: PathBuf,
+    comment_identifier: String,
 ) {
     let mut cacher = FileCacher::new(data_path.clone());
     spawn(move || loop {
@@ -154,7 +162,7 @@ fn create_caching_thread(
                 if file_paths.filter(|path| path.contains(r"\.")).count() > 0 {
                     continue;
                 }
-                act_on_event(state_machine_tx.clone(), file_event);
+                act_on_event(&comment_identifier, state_machine_tx.clone(), file_event);
             }
             Ok(Err(e)) => println!("notify error: {:?}!", e),
             Err(e) => {
@@ -170,15 +178,17 @@ pub struct FileGatherer {
 }
 
 impl FileGatherer {
-    pub fn new(
-        state_machine_tx: Sender<StateMachine>,
-        watcher_paths: Vec<PathBuf>,
-        data_path: &Path,
-    ) -> Self {
-        let data_path: PathBuf = PathBuf::from(data_path).join("files.json");
+    pub fn new(state_machine_tx: Sender<StateMachine>, config: Config) -> Self {
         let (notify_tx, notify_rx) = create_notify_channel();
-        let file_watcher_threads = create_file_watchers(watcher_paths, notify_tx);
-        create_caching_thread(state_machine_tx, notify_rx, data_path);
+        let file_watcher_threads = create_file_watchers(config.watcher_paths, notify_tx);
+
+        let files_data_path = PathBuf::from(config.data_path).join("files.json");
+        create_caching_thread(
+            state_machine_tx,
+            notify_rx,
+            files_data_path,
+            config.comment_identifier,
+        );
         Self {
             file_watcher_threads,
         }

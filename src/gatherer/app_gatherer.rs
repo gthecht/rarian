@@ -27,7 +27,9 @@ impl ActiveProcess {
     fn new(active_window: ActiveWindow, process: &Process) -> ActiveProcess {
         let app_name = active_window.app_name;
         let mut title = active_window.title.trim_start_matches("● ").to_string();
-        if title == "" { title = app_name.clone(); }
+        if title == "" {
+            title = app_name.clone();
+        }
         let process_path = active_window.process_path;
         let window_id = active_window.window_id;
 
@@ -178,7 +180,7 @@ fn monitor_processes(
             Some(active_process) => {
                 if !active_process_gatherer.is_current_process(&active_process) {
                     if IGNORE_APPS.contains(&active_process.title.as_str()) {
-                        continue
+                        continue;
                     }
                     let new_process = ActiveProcessEvent::new(active_process);
                     active_process_gatherer.update_current_and_cache(Some(new_process));

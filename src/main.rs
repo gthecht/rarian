@@ -1,12 +1,13 @@
 use std::{
-    sync::mpsc::{channel, Sender}, thread::spawn
+    sync::mpsc::{channel, Sender},
+    thread::spawn,
 };
 
 mod app;
 mod cacher;
+mod config;
 mod gatherer;
 mod notes;
-mod config;
 
 use crate::app::tui::run_app;
 use crate::gatherer::app_gatherer::AppGatherer;
@@ -32,11 +33,7 @@ fn main() {
     let app_gatherer = AppGatherer::new(config.data_path.as_path());
     let mut note_taker = NoteTaker::new(config.data_path.as_path());
     let (action_tx, action_rx) = channel::<StateMachine>();
-    let file_gatherer = FileGatherer::new(
-        action_tx.clone(),
-        config.watcher_paths,
-        config.data_path.as_path(),
-    );
+    let file_gatherer = FileGatherer::new(action_tx.clone(), config);
     let app_thread = spawn(move || {
         run_app(action_tx.clone());
     });
