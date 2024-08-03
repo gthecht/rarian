@@ -1,12 +1,19 @@
+use anyhow;
+use clap::Parser;
+use directories::ProjectDirs;
+use serde::{Deserialize, Serialize};
 use std::{
     fs::{create_dir_all, File},
     io::BufReader,
     path::{Path, PathBuf},
 };
 
-use anyhow;
-use directories::ProjectDirs;
-use serde::{Deserialize, Serialize};
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    #[arg(short, long)]
+    data_path: Option<PathBuf>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -16,11 +23,14 @@ pub struct Config {
 
 impl Config {
     pub fn new() -> Config {
-        let project_dir = ProjectDirs::from("", "Rarian", "rarian").unwrap();
-        let data_path = project_dir.data_dir();
-        println!("{:?}", data_path);
-        create_dir_all(data_path).expect("Creating the project directories in Roaming failed");
+        let args = Args::parse();
+        let data_path = args.data_path.unwrap_or_else(|| {
+            let project_dir = ProjectDirs::from("", "Rarian", "rarian").unwrap();
+            project_dir.data_dir().to_path_buf()
+        });
+        create_dir_all(&data_path).expect("Creating the project directories in Roaming failed");
         let config_path = data_path.join("config.json");
+        println!("{:?}", config_path);
 
         match Self::read_config_from_file(config_path) {
             Ok(config) => config,

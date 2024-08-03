@@ -1,6 +1,5 @@
 use std::{
-    sync::mpsc::{channel, Sender},
-    thread::spawn,
+    sync::mpsc::{channel, Sender}, thread::spawn
 };
 
 mod app;
@@ -54,9 +53,7 @@ fn main() {
             Ok(GetAppNotes(link, tx)) => {
                 let _ = tx.send(note_taker.get_app_notes(&link));
             }
-            Ok(NewNote(text, links)) => {
-                note_taker.add_note(&text, links);
-            }
+            Ok(NewNote(text, links)) => note_taker.add_note(&text, links),
             Ok(ArchiveNote(note_id)) => note_taker.archive_note(&note_id),
             Ok(EditNote(note_id, text)) => note_taker.edit_note(&note_id, &text),
             Ok(Quit) => break,
