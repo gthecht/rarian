@@ -1,6 +1,7 @@
 use std::{
     io::{self, stdout, Stdout},
-    sync::mpsc::{channel, Sender}, time::Duration,
+    sync::mpsc::{channel, Sender},
+    time::Duration,
 };
 
 use ratatui::{
@@ -26,7 +27,8 @@ use ratatui::{
 };
 
 use crate::{
-    app::insert_note::InsertWindow, config::Config, gatherer::app_gatherer::ActiveProcessEvent, notes::Note, StateMachine
+    app::insert_note::InsertWindow, config::Config, gatherer::app_gatherer::ActiveProcessEvent,
+    notes::Note, StateMachine,
 };
 
 use super::insert_note::InputMode;

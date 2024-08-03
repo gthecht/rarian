@@ -5,7 +5,7 @@ use active_win_pos_rs::{get_active_window, ActiveWindow};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::{sleep, spawn, JoinHandle};
@@ -212,7 +212,13 @@ impl AppGatherer {
         let process_events_clone = Arc::clone(&process_events);
 
         let gatherer_thread = spawn(move || {
-            monitor_processes(cacher, sleep_duration, thread_ctrl_rx, current_clone, process_events_clone)
+            monitor_processes(
+                cacher,
+                sleep_duration,
+                thread_ctrl_rx,
+                current_clone,
+                process_events_clone,
+            )
         });
         Self {
             thread_ctrl_tx,

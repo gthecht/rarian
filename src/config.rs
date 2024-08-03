@@ -7,7 +7,6 @@ use std::str;
 use std::time::Duration;
 use std::{
     fs::{create_dir_all, File},
-    io::BufReader,
     path::{Path, PathBuf},
 };
 use toml;
