@@ -178,16 +178,16 @@ pub struct FileGatherer {
 }
 
 impl FileGatherer {
-    pub fn new(state_machine_tx: Sender<StateMachine>, config: Config) -> Self {
+    pub fn new(state_machine_tx: Sender<StateMachine>, config: &Config) -> Self {
         let (notify_tx, notify_rx) = create_notify_channel();
-        let file_watcher_threads = create_file_watchers(config.watcher_paths, notify_tx);
+        let file_watcher_threads = create_file_watchers(config.watcher_paths.clone(), notify_tx);
 
-        let files_data_path = PathBuf::from(config.data_path).join("files.json");
+        let files_data_path = PathBuf::from(config.data_path.clone()).join("files.json");
         create_caching_thread(
             state_machine_tx,
             notify_rx,
             files_data_path,
-            config.comment_identifier,
+            config.comment_identifier.clone(),
         );
         Self {
             file_watcher_threads,

@@ -1,6 +1,6 @@
 use std::{
     io::{self, stdout, Stdout},
-    sync::mpsc::{channel, Sender},
+    sync::mpsc::{channel, Sender}, time::Duration,
 };
 
 use ratatui::{
@@ -26,8 +26,7 @@ use ratatui::{
 };
 
 use crate::{
-    app::insert_note::InsertWindow, gatherer::app_gatherer::ActiveProcessEvent, notes::Note,
-    StateMachine,
+    app::insert_note::InsertWindow, config::Config, gatherer::app_gatherer::ActiveProcessEvent, notes::Note, StateMachine
 };
 
 use super::insert_note::InputMode;
@@ -54,10 +53,11 @@ pub struct TuiApp {
     notes_window: NotesWindow,
     last_apps_window: LastAppsWindow,
     help_window: HelpWindow,
+    sleep_duration: Duration,
 }
 
 impl TuiApp {
-    pub fn new(state_machine_tx: Sender<StateMachine>) -> TuiApp {
+    pub fn new(config: Config, state_machine_tx: Sender<StateMachine>) -> TuiApp {
         TuiApp {
             state_machine_tx: state_machine_tx.clone(),
             exit: false,
@@ -66,6 +66,7 @@ impl TuiApp {
             notes_window: NotesWindow::new(state_machine_tx.clone()),
             last_apps_window: LastAppsWindow::new(state_machine_tx.clone()),
             help_window: HelpWindow::new(),
+            sleep_duration: config.sleep_duration.clone(),
         }
     }
 
@@ -114,7 +115,7 @@ impl TuiApp {
     }
 
     fn handle_events(&mut self) -> io::Result<()> {
-        if event::poll(std::time::Duration::from_millis(16))? {
+        if event::poll(self.sleep_duration)? {
             match event::read()? {
                 // it's important to check that the event is a key press event as
                 // crossterm also emits key release and repeat events on Windows.
@@ -379,9 +380,9 @@ impl Widget for &HelpWindow {
     }
 }
 
-pub fn run_app(state_machine_tx: Sender<StateMachine>) {
+pub fn run_app(config: Config, state_machine_tx: Sender<StateMachine>) {
     let mut terminal = init().expect("crossterm init failed");
-    let mut tui_app = TuiApp::new(state_machine_tx);
+    let mut tui_app = TuiApp::new(config, state_machine_tx);
     tui_app.run(&mut terminal).expect("app run failed");
     restore().expect("terminal restore failed");
 }

@@ -30,12 +30,12 @@ pub enum StateMachine {
 fn main() {
     change_window_title();
     let config = Config::new();
-    let app_gatherer = AppGatherer::new(config.data_path.as_path());
+    let app_gatherer = AppGatherer::new(&config);
     let mut note_taker = NoteTaker::new(config.data_path.as_path());
     let (action_tx, action_rx) = channel::<StateMachine>();
-    let file_gatherer = FileGatherer::new(action_tx.clone(), config);
+    let file_gatherer = FileGatherer::new(action_tx.clone(), &config);
     let app_thread = spawn(move || {
-        run_app(action_tx.clone());
+        run_app(config, action_tx.clone());
     });
 
     use StateMachine::*;
