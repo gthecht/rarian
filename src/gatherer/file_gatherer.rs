@@ -33,10 +33,10 @@ fn create_notify_channel() -> (
 }
 
 fn create_file_watchers(
-    file_paths: Vec<PathBuf>,
+    watcher_paths: Vec<PathBuf>,
     notify_tx: Sender<Result<notify::Event, notify::Error>>,
 ) -> Vec<(Sender<bool>, JoinHandle<()>)> {
-    let file_watcher_threads: Vec<(Sender<bool>, JoinHandle<()>)> = file_paths
+    let file_watcher_threads: Vec<(Sender<bool>, JoinHandle<()>)> = watcher_paths
         .into_iter()
         .map(|file_path| {
             let (notify_ctrl_tx, notify_ctrl_rx) = channel();
@@ -172,12 +172,12 @@ pub struct FileGatherer {
 impl FileGatherer {
     pub fn new(
         state_machine_tx: Sender<StateMachine>,
-        file_paths: Vec<PathBuf>,
+        watcher_paths: Vec<PathBuf>,
         data_path: &Path,
     ) -> Self {
         let data_path: PathBuf = PathBuf::from(data_path).join("files.json");
         let (notify_tx, notify_rx) = create_notify_channel();
-        let file_watcher_threads = create_file_watchers(file_paths, notify_tx);
+        let file_watcher_threads = create_file_watchers(watcher_paths, notify_tx);
         create_caching_thread(state_machine_tx, notify_rx, data_path);
         Self {
             file_watcher_threads,
