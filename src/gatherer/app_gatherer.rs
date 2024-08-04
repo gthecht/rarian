@@ -1,10 +1,11 @@
 extern crate sysinfo;
 use crate::cacher::{Cache, FileCacher, LoadFromCache};
+use crate::config::Config;
 use active_win_pos_rs::{get_active_window, ActiveWindow};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::{sleep, spawn, JoinHandle};
@@ -27,7 +28,9 @@ impl ActiveProcess {
     fn new(active_window: ActiveWindow, process: &Process) -> ActiveProcess {
         let app_name = active_window.app_name;
         let mut title = active_window.title.trim_start_matches("● ").to_string();
-        if title == "" { title = app_name.clone(); }
+        if title == "" {
+            title = app_name.clone();
+        }
         let process_path = active_window.process_path;
         let window_id = active_window.window_id;
 
@@ -131,10 +134,6 @@ impl ActiveProcessGatherer {
     }
 }
 
-fn duration() -> Duration {
-    return Duration::from_millis(16);
-}
-
 fn init_system() -> System {
     let mut sys = System::new_all();
     sys.refresh_all();
@@ -161,6 +160,7 @@ fn get_active_process(sys: &System) -> Option<ActiveProcess> {
 
 fn monitor_processes(
     cacher: FileCacher,
+    sleep_duration: Duration,
     gatherer_rx: Receiver<bool>,
     current: Arc<Mutex<Option<ActiveProcessEvent>>>,
     process_events: Arc<Mutex<Vec<ActiveProcessEvent>>>,
@@ -170,7 +170,7 @@ fn monitor_processes(
 
     const IGNORE_APPS: [&str; 3] = ["Rarian app", "Task Switching", ""];
     while let Err(_) = gatherer_rx.try_recv() {
-        sleep(duration());
+        sleep(sleep_duration);
         sys.refresh_processes_specifics(ProcessRefreshKind::new());
 
         active_process_gatherer.update_active_duration();
@@ -178,7 +178,7 @@ fn monitor_processes(
             Some(active_process) => {
                 if !active_process_gatherer.is_current_process(&active_process) {
                     if IGNORE_APPS.contains(&active_process.title.as_str()) {
-                        continue
+                        continue;
                     }
                     let new_process = ActiveProcessEvent::new(active_process);
                     active_process_gatherer.update_current_and_cache(Some(new_process));
@@ -200,18 +200,25 @@ pub struct AppGatherer {
 }
 
 impl AppGatherer {
-    pub fn new(data_path: &Path) -> Self {
-        let data_path: PathBuf = PathBuf::from(data_path).join("apps.json");
+    pub fn new(config: &Config) -> Self {
+        let data_path: PathBuf = PathBuf::from(config.data_path.clone()).join("apps.json");
         let mut cacher = FileCacher::new(data_path);
-        let (thread_ctrl_tx, thread_ctrl_rx) = channel::<bool>();
+        let sleep_duration = config.sleep_duration;
 
+        let (thread_ctrl_tx, thread_ctrl_rx) = channel::<bool>();
         let current = Arc::new(Mutex::new(None));
         let process_events = Arc::new(Mutex::new(cacher.load_from_cache()));
         let current_clone = Arc::clone(&current);
         let process_events_clone = Arc::clone(&process_events);
 
         let gatherer_thread = spawn(move || {
-            monitor_processes(cacher, thread_ctrl_rx, current_clone, process_events_clone)
+            monitor_processes(
+                cacher,
+                sleep_duration,
+                thread_ctrl_rx,
+                current_clone,
+                process_events_clone,
+            )
         });
         Self {
             thread_ctrl_tx,

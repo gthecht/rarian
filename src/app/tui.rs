@@ -1,6 +1,7 @@
 use std::{
     io::{self, stdout, Stdout},
     sync::mpsc::{channel, Sender},
+    time::Duration,
 };
 
 use ratatui::{
@@ -20,14 +21,14 @@ use ratatui::{
     text::Line,
     widgets::{
         block::Title, Block, HighlightSpacing, List, ListItem, ListState, Paragraph,
-        StatefulWidget, Widget,
+        StatefulWidget, Widget, Wrap,
     },
     Frame, Terminal,
 };
 
 use crate::{
-    app::insert_note::InsertWindow, gatherer::app_gatherer::ActiveProcessEvent, notes::Note,
-    StateMachine,
+    app::insert_note::InsertWindow, config::Config, gatherer::app_gatherer::ActiveProcessEvent,
+    notes::Note, StateMachine,
 };
 
 use super::insert_note::InputMode;
@@ -54,10 +55,11 @@ pub struct TuiApp {
     notes_window: NotesWindow,
     last_apps_window: LastAppsWindow,
     help_window: HelpWindow,
+    sleep_duration: Duration,
 }
 
 impl TuiApp {
-    pub fn new(state_machine_tx: Sender<StateMachine>) -> TuiApp {
+    pub fn new(config: Config, state_machine_tx: Sender<StateMachine>) -> TuiApp {
         TuiApp {
             state_machine_tx: state_machine_tx.clone(),
             exit: false,
@@ -66,6 +68,7 @@ impl TuiApp {
             notes_window: NotesWindow::new(state_machine_tx.clone()),
             last_apps_window: LastAppsWindow::new(state_machine_tx.clone()),
             help_window: HelpWindow::new(),
+            sleep_duration: config.sleep_duration.clone(),
         }
     }
 
@@ -114,7 +117,7 @@ impl TuiApp {
     }
 
     fn handle_events(&mut self) -> io::Result<()> {
-        if event::poll(std::time::Duration::from_millis(16))? {
+        if event::poll(self.sleep_duration)? {
             match event::read()? {
                 // it's important to check that the event is a key press event as
                 // crossterm also emits key release and repeat events on Windows.
@@ -357,20 +360,31 @@ impl HelpWindow {
 
 impl Widget for &HelpWindow {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let help_message = Line::from(
-            "i = insert note; q = quit; ESC = view mode; ENTER = add new note; ↓↑ jk = select items in list; e = edit selected note; a = archive selected note",
-        );
+        let help_messages = vec![
+            "i = insert note",
+            "q = quit",
+            "ESC = view mode",
+            "ENTER = add new note",
+            "↓↑/jk = select items in list",
+            "e = edit selected note",
+            "a/d = archive selected note",
+            "edit the config in %appdata%/Rarian/rarian/data",
+        ];
+        let help_message_line = Line::from(help_messages.join("; "));
         let title = Title::from(" help window ".bold());
         let block = Block::bordered()
             .title(title.alignment(Alignment::Center))
             .border_set(border::THICK);
-        Paragraph::new(help_message).block(block).render(area, buf);
+        Paragraph::new(help_message_line)
+            .block(block)
+            .wrap(Wrap { trim: true })
+            .render(area, buf);
     }
 }
 
-pub fn run_app(state_machine_tx: Sender<StateMachine>) {
+pub fn run_app(config: Config, state_machine_tx: Sender<StateMachine>) {
     let mut terminal = init().expect("crossterm init failed");
-    let mut tui_app = TuiApp::new(state_machine_tx);
+    let mut tui_app = TuiApp::new(config, state_machine_tx);
     tui_app.run(&mut terminal).expect("app run failed");
     restore().expect("terminal restore failed");
 }
