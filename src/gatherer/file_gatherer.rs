@@ -132,6 +132,16 @@ fn act_on_event(
     }
 }
 
+fn path_is_hidden(path: &PathBuf) -> bool {
+    path.components().any(|component| {
+        if let Some(component) = component.as_os_str().to_str() {
+            component.starts_with(".")
+        } else {
+            false
+        }
+    })
+}
+
 fn create_caching_thread(
     state_machine_tx: Sender<StateMachine>,
     notify_rx: Receiver<Result<notify::Event, notify::Error>>,
@@ -140,29 +150,20 @@ fn create_caching_thread(
 ) {
     let mut cacher = FileCacher::new(data_path.clone());
     spawn(move || loop {
-        let cache_path = data_path.as_path().to_str().expect("path to string failed");
+        let cache_path = data_path.as_path();
         match notify_rx.recv() {
             Ok(Ok(file_event)) => {
-                let file_paths = file_event
+                if file_event
                     .paths
-                    .iter()
-                    .map(|p| p.to_str().expect("path to string failed"));
-
-                if file_paths
                     .clone()
-                    .filter(|path| path.ends_with(cache_path))
-                    .count()
-                    > 0
+                    .iter()
+                    .all(|path| !path.ends_with(cache_path) && !path_is_hidden(path))
                 {
-                    continue;
+                    cacher
+                        .cache(&cache_event(&file_event))
+                        .expect("cache event failed");
+                    act_on_event(&comment_identifier, state_machine_tx.clone(), file_event);
                 }
-                cacher
-                    .cache(&cache_event(&file_event))
-                    .expect("cache event failed");
-                if file_paths.filter(|path| path.contains(r"\.")).count() > 0 {
-                    continue;
-                }
-                act_on_event(&comment_identifier, state_machine_tx.clone(), file_event);
             }
             Ok(Err(e)) => println!("notify error: {:?}!", e),
             Err(e) => {
