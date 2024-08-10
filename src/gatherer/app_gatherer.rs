@@ -4,28 +4,32 @@ use crate::config::Config;
 use active_win_pos_rs::{get_active_window, ActiveWindow};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use serde_with::skip_serializing_none;
 use std::fmt::Display;
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::{sleep, spawn, JoinHandle};
 use std::time::{Duration, SystemTime};
-use sysinfo::{Pid, Process, ProcessExt, ProcessRefreshKind, System, SystemExt};
+use sysinfo::{
+    set_open_files_limit, Pid, Process, ProcessExt, ProcessRefreshKind, System, SystemExt,
+};
 
+#[skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActiveProcess {
     title: String,
     app_name: String,
     window_id: String,
-    exe: PathBuf,
+    exe: Option<PathBuf>,
     process_path: PathBuf,
     process_id: usize,
     parent: Option<usize>,
-    start_time: u64,
+    start_time: Option<u64>,
 }
 
 impl ActiveProcess {
-    fn new(active_window: ActiveWindow, process: &Process) -> ActiveProcess {
+    fn new(active_window: ActiveWindow, process: Option<&Process>) -> ActiveProcess {
         let app_name = active_window.app_name;
         let mut title = active_window.title.trim_start_matches("● ").to_string();
         if title == "" {
@@ -38,9 +42,9 @@ impl ActiveProcess {
             .process_id
             .try_into()
             .expect("process should fit into usize");
-        let parent = process.parent().map(|pid| usize::from(pid));
-        let start_time = process.start_time();
-        let exe: PathBuf = process.exe().into();
+        let parent = process.and_then(|proc| proc.parent().map(|pid| usize::from(pid)));
+        let start_time = process.map(|proc| proc.start_time());
+        let exe = process.map(|proc| proc.exe().into());
         ActiveProcess {
             title,
             app_name,
@@ -135,8 +139,9 @@ impl ActiveProcessGatherer {
 }
 
 fn init_system() -> System {
-    let mut sys = System::new_all();
-    sys.refresh_all();
+    set_open_files_limit(0);
+    let mut sys = System::new();
+    sys.refresh_processes_specifics(ProcessRefreshKind::new());
     return sys;
 }
 
@@ -146,13 +151,9 @@ fn get_active_process(sys: &System) -> Option<ActiveProcess> {
             .process_id
             .try_into()
             .expect("process should fit into usize");
-        match sys.process(Pid::from(process_id)) {
-            Some(active_process) => {
-                let active_process = ActiveProcess::new(active_window, active_process);
-                return Some(active_process);
-            }
-            None => panic!("cannot find window process"),
-        };
+        let process_from_pid = sys.process(Pid::from(process_id));
+        let active_process = ActiveProcess::new(active_window, process_from_pid);
+        return Some(active_process);
     } else {
         None
     }
