@@ -3,7 +3,7 @@ pub mod test_utils {
     use notify::event::*;
     use std::fs::{create_dir_all, remove_dir_all, File};
     use std::io::Write;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::sync::mpsc::channel;
     use std::sync::mpsc::{Receiver, Sender};
     use std::thread::sleep;
@@ -19,14 +19,13 @@ pub mod test_utils {
     }
 
     pub fn create_test_path(test_id: &str) -> PathBuf {
-        let mut path_str: String = "./testData".to_owned();
-        path_str.push_str("/");
-        path_str.push_str(test_id);
-        return PathBuf::from(&path_str);
+        let testdata_path = Path::new("./testData");
+        testdata_path.join(test_id)
     }
 
     pub fn create_test_dir(test_id: &str) -> (PathBuf, JoinHandle<()>) {
         let path_buf = create_test_path(test_id);
+        println!("{:?}", path_buf);
         create_dir_all(&path_buf).expect("create dir failed");
         let rmdir_thread = cleanup_test_path_delayed(&path_buf, None);
         return (path_buf, rmdir_thread);
