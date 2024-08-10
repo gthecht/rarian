@@ -46,7 +46,6 @@ pub fn watch_dir_thread(
 mod file_dir_test {
     use super::*;
     use crate::gatherer::test_utils::test_utils::*;
-    use notify::event::*;
     use std::fs::create_dir_all;
     use std::sync::mpsc::channel;
     use std::thread::sleep;
@@ -90,11 +89,10 @@ mod file_dir_test {
 
         let file_path = create_file_in_dir(&test_path, "tmp.txt", "temp");
 
-        let ek = EventKind::Create(CreateKind::Any);
-        wait_for_event(&rx, ek, &file_path);
+        wait_for_event(&rx, &file_path);
         remove_file_in_dir(&test_path, "tmp.txt");
         sleep(duration());
-        wait_for_event(&rx, EventKind::Remove(RemoveKind::Any), &file_path);
+        wait_for_event(&rx, &file_path);
         rmdir_thread.join().unwrap();
     }
 
@@ -108,7 +106,7 @@ mod file_dir_test {
         create_dir_all(&sub_dir_path).expect("create dir failed");
         let sub_file_path = create_file_in_dir(&sub_dir_path, "tmp.txt", "temp");
 
-        wait_for_event(&rx, EventKind::Create(CreateKind::Any), &sub_file_path);
+        wait_for_event(&rx, &sub_file_path);
 
         rmdir_thread.join().unwrap();
     }
@@ -120,7 +118,7 @@ mod file_dir_test {
         sleep(duration());
         let file_path = create_file_in_dir(&test_path, "tmp.txt", "temp");
 
-        wait_for_event(&rx, EventKind::Create(CreateKind::Any), &file_path);
+        wait_for_event(&rx, &file_path);
         cleanup_thread(thread_ctrl, watcher_thread);
         rmdir_thread.join().unwrap();
     }
