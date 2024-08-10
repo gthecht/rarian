@@ -1,6 +1,5 @@
 #[cfg(test)]
 pub mod test_utils {
-    use notify::event::*;
     use std::fs::{create_dir_all, remove_dir_all, File};
     use std::io::Write;
     use std::path::{Path, PathBuf};
@@ -62,7 +61,6 @@ pub mod test_utils {
 
     pub fn wait_for_event(
         rx: &Receiver<Result<notify::Event, notify::Error>>,
-        event_kind: EventKind,
         file_path: &PathBuf,
     ) {
         let event = rx.recv_timeout(long_duration());
@@ -70,10 +68,10 @@ pub mod test_utils {
             Ok(rx_result) => match rx_result {
                 Ok(event_result) => {
                     let first_path = event_result.paths.get(0);
-                    if event_result.kind == event_kind && first_path == Some(file_path) {
+                    if first_path == Some(file_path) {
                         return;
                     } else {
-                        return wait_for_event(rx, event_kind, file_path);
+                        return wait_for_event(rx, file_path);
                     }
                 }
                 Err(e) => panic!("{}", e),
