@@ -11,7 +11,9 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::{sleep, spawn, JoinHandle};
 use std::time::{Duration, SystemTime};
-use sysinfo::{Pid, Process, ProcessExt, ProcessRefreshKind, System, SystemExt};
+use sysinfo::{
+    set_open_files_limit, Pid, Process, ProcessExt, ProcessRefreshKind, System, SystemExt,
+};
 
 #[skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -137,8 +139,9 @@ impl ActiveProcessGatherer {
 }
 
 fn init_system() -> System {
-    let mut sys = System::new_all();
-    sys.refresh_all();
+    set_open_files_limit(0);
+    let mut sys = System::new();
+    sys.refresh_processes_specifics(ProcessRefreshKind::new());
     return sys;
 }
 
