@@ -142,23 +142,29 @@ fn path_is_hidden(path: &PathBuf) -> bool {
     })
 }
 
+fn path_includes_ignored_path(path: &PathBuf, ignore_paths: &Vec<String>) -> bool {
+    path.to_str().map_or(false, |p| {
+        ignore_paths.iter().any(|sub_path| p.contains(sub_path))
+    })
+}
+
 fn create_caching_thread(
     state_machine_tx: Sender<StateMachine>,
     notify_rx: Receiver<Result<notify::Event, notify::Error>>,
     data_path: PathBuf,
     comment_identifier: String,
+    ignore_paths: Vec<String>,
 ) {
     let mut cacher = FileCacher::new(data_path.clone());
     spawn(move || loop {
         let cache_path = data_path.as_path();
         match notify_rx.recv() {
             Ok(Ok(file_event)) => {
-                if file_event
-                    .paths
-                    .clone()
-                    .iter()
-                    .all(|path| !path.ends_with(cache_path) && !path_is_hidden(path))
-                {
+                if file_event.paths.clone().iter().all(|path| {
+                    !path.ends_with(cache_path)
+                        && !path_is_hidden(path)
+                        && !path_includes_ignored_path(path, &ignore_paths)
+                }) {
                     cacher
                         .cache(&cache_event(&file_event))
                         .expect("cache event failed");
@@ -189,6 +195,7 @@ impl FileGatherer {
             notify_rx,
             files_data_path,
             config.comment_identifier.clone(),
+            config.ignore_paths.clone(),
         );
         Self {
             file_watcher_threads,

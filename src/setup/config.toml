@@ -2,7 +2,7 @@ app_name = "rarian"
 data_path = "%appdata%/Rarian/rarian/data"
 watcher_paths = ["home/workspace"]
 ignore_apps = []
-ignore_files = []
+ignore_paths = []
 comment_identifier = "@#$"
 
 [sleep_duration]

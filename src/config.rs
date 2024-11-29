@@ -22,6 +22,7 @@ struct Args {
 pub struct Config {
     pub data_path: PathBuf,
     pub watcher_paths: Vec<PathBuf>,
+    pub ignore_paths: Vec<String>,
     pub comment_identifier: String,
     pub sleep_duration: Duration,
 }
@@ -44,6 +45,7 @@ impl Config {
                 Config {
                     data_path: data_path.to_path_buf(),
                     watcher_paths: vec![],
+                    ignore_paths: vec![],
                     comment_identifier,
                     sleep_duration,
                 }
