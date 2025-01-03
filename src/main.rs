@@ -2,7 +2,6 @@ use std::{
     sync::mpsc::{channel, Sender},
     thread::spawn,
 };
-
 mod app;
 mod cacher;
 mod config;

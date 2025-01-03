@@ -3,6 +3,7 @@ use crate::cacher::{Cache, FileCacher, LoadFromCache};
 use crate::config::Config;
 use active_win_pos_rs::{get_active_window, ActiveWindow};
 use itertools::Itertools;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use std::fmt::Display;
@@ -159,6 +160,8 @@ fn get_active_process(sys: &System) -> Option<ActiveProcess> {
     }
 }
 
+const IGNORE_APPS_REGEXES: [&str; 3] = ["Rarian app$", "^Task Switching$", "^$"];
+
 fn monitor_processes(
     cacher: FileCacher,
     sleep_duration: Duration,
@@ -169,7 +172,7 @@ fn monitor_processes(
     let mut sys = init_system();
     let mut active_process_gatherer = ActiveProcessGatherer::new(current, process_events, cacher);
 
-    const IGNORE_APPS: [&str; 3] = ["Rarian app", "Task Switching", ""];
+    let ignore_apps = Regex::new(IGNORE_APPS_REGEXES.join("|").as_str()).unwrap();
     while let Err(_) = gatherer_rx.try_recv() {
         sleep(sleep_duration);
         sys.refresh_processes_specifics(ProcessRefreshKind::new());
@@ -178,7 +181,7 @@ fn monitor_processes(
         match get_active_process(&sys) {
             Some(active_process) => {
                 if !active_process_gatherer.is_current_process(&active_process) {
-                    if IGNORE_APPS.contains(&active_process.title.as_str()) {
+                    if ignore_apps.is_match(active_process.title.as_str()) {
                         continue;
                     }
                     let new_process = ActiveProcessEvent::new(active_process);
