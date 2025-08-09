@@ -28,7 +28,7 @@ use ratatui::{
 
 use crate::{
     app::insert_note::InsertWindow, config::Config, gatherer::app_gatherer::ActiveProcessEvent,
-    notes::Note, StateMachine,
+    notes::Note, Signals,
 };
 
 use super::insert_note::InputMode;
@@ -48,7 +48,7 @@ pub fn restore() -> io::Result<()> {
 }
 
 pub struct TuiApp {
-    state_machine_tx: Sender<StateMachine>,
+    state_machine_tx: Sender<Signals>,
     exit: bool,
     input_mode: InputMode,
     insert_note_window: InsertWindow,
@@ -59,7 +59,7 @@ pub struct TuiApp {
 }
 
 impl TuiApp {
-    pub fn new(config: Config, state_machine_tx: Sender<StateMachine>) -> TuiApp {
+    pub fn new(config: Config, state_machine_tx: Sender<Signals>) -> TuiApp {
         TuiApp {
             state_machine_tx: state_machine_tx.clone(),
             exit: false,
@@ -170,7 +170,7 @@ impl TuiApp {
             Some(row) => {
                 let note = self.notes_window.current_notes.get(row).unwrap();
                 self.state_machine_tx
-                    .send(StateMachine::ArchiveNote(note.id))
+                    .send(Signals::ArchiveNote(note.id))
                     .unwrap();
             }
             None => {}
@@ -191,23 +191,23 @@ impl TuiApp {
 
     fn exit(&mut self) {
         self.exit = true;
-        self.state_machine_tx.send(StateMachine::Quit).unwrap();
+        self.state_machine_tx.send(Signals::Quit).unwrap();
     }
 }
 
 struct LastAppsWindow {
-    state_machine_tx: Sender<StateMachine>,
+    state_machine_tx: Sender<Signals>,
 }
 
 impl LastAppsWindow {
-    pub fn new(state_machine_tx: Sender<StateMachine>) -> LastAppsWindow {
+    pub fn new(state_machine_tx: Sender<Signals>) -> LastAppsWindow {
         LastAppsWindow { state_machine_tx }
     }
 
     fn show_last_apps(&self, num: usize) -> Vec<ActiveProcessEvent> {
         let (tx, rx) = channel::<Vec<ActiveProcessEvent>>();
         self.state_machine_tx
-            .send(StateMachine::RecentApps(num, tx))
+            .send(Signals::RecentApps(num, tx))
             .unwrap();
         let last_processes = rx.recv().expect("main thread is alive");
         last_processes.into_iter().take(num).collect()
@@ -236,14 +236,14 @@ impl Widget for &LastAppsWindow {
 }
 
 struct NotesWindow {
-    state_machine_tx: Sender<StateMachine>,
+    state_machine_tx: Sender<Signals>,
     current_title: String,
     current_notes: Vec<Note>,
     selected_row: ListState,
 }
 
 impl NotesWindow {
-    pub fn new(state_machine_tx: Sender<StateMachine>) -> NotesWindow {
+    pub fn new(state_machine_tx: Sender<Signals>) -> NotesWindow {
         NotesWindow {
             state_machine_tx,
             current_title: String::new(),
@@ -254,20 +254,15 @@ impl NotesWindow {
 
     fn get_current_notes_and_window(&mut self) {
         let (tx, rx) = channel::<Option<ActiveProcessEvent>>();
-        self.state_machine_tx
-            .send(StateMachine::CurrentApp(tx))
-            .unwrap();
-        match rx.recv().expect("main thread is alive") {
+        self.state_machine_tx.send(Signals::CurrentApp(tx)).unwrap();
+        match rx.recv().expect("main thread should be alive") {
             Some(current) => {
                 let title = current.get_title();
                 let (tx, rx) = channel::<Vec<Note>>();
                 self.state_machine_tx
-                    .send(StateMachine::GetAppNotes(
-                        current.get_title().to_string(),
-                        tx,
-                    ))
+                    .send(Signals::GetLinkNotes(current.get_title().to_string(), tx))
                     .unwrap();
-                let app_notes = rx.recv().expect("main thread is alive");
+                let app_notes = rx.recv().expect("main thread should be alive");
                 self.current_title = title.to_owned();
                 self.current_notes = app_notes.into_iter().collect();
             }
@@ -382,7 +377,7 @@ impl Widget for &HelpWindow {
     }
 }
 
-pub fn run_app(config: Config, state_machine_tx: Sender<StateMachine>) {
+pub fn run_app(config: Config, state_machine_tx: Sender<Signals>) {
     let mut terminal = init().expect("crossterm init failed");
     let mut tui_app = TuiApp::new(config, state_machine_tx);
     tui_app.run(&mut terminal).expect("app run failed");

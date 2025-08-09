@@ -16,10 +16,10 @@ use gatherer::app_gatherer::ActiveProcessEvent;
 use notes::{Note, NoteTaker};
 use ulid::Ulid;
 
-pub enum StateMachine {
+pub enum Signals {
     RecentApps(usize, Sender<Vec<ActiveProcessEvent>>),
     CurrentApp(Sender<Option<ActiveProcessEvent>>),
-    GetAppNotes(String, Sender<Vec<Note>>),
+    GetLinkNotes(String, Sender<Vec<Note>>),
     NewNote(String, Vec<String>),
     ArchiveNote(Ulid),
     EditNote(Ulid, String),
@@ -31,13 +31,13 @@ fn main() {
     let config = Config::new();
     let app_gatherer = AppGatherer::new(&config);
     let mut note_taker = NoteTaker::new(config.data_path.as_path());
-    let (action_tx, action_rx) = channel::<StateMachine>();
+    let (action_tx, action_rx) = channel::<Signals>();
     let file_gatherer = FileGatherer::new(action_tx.clone(), &config);
     let app_thread = spawn(move || {
         run_app(config, action_tx.clone());
     });
 
-    use StateMachine::*;
+    use Signals::*;
     loop {
         match action_rx.recv() {
             Ok(RecentApps(n, tx)) => {
@@ -46,8 +46,8 @@ fn main() {
             Ok(CurrentApp(tx)) => {
                 let _ = tx.send(app_gatherer.get_current());
             }
-            Ok(GetAppNotes(link, tx)) => {
-                let _ = tx.send(note_taker.get_app_notes(&link));
+            Ok(GetLinkNotes(link, tx)) => {
+                let _ = tx.send(note_taker.get_linked_notes(&link));
             }
             Ok(NewNote(text, links)) => note_taker.add_note(&text, links),
             Ok(ArchiveNote(note_id)) => note_taker.archive_note(&note_id),

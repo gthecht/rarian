@@ -15,7 +15,7 @@ use crate::cacher::{Cache, FileCacher};
 use crate::config::Config;
 use crate::gatherer::app_gatherer::ActiveProcessEvent;
 use crate::gatherer::file_watcher::watch_dir_thread;
-use crate::StateMachine;
+use crate::Signals;
 
 fn cache_event(event: &notify::Event) -> Value {
     let timestamp = SystemTime::now();
@@ -51,7 +51,7 @@ fn create_file_watchers(
 
 fn check_for_notes(
     comment_identifier: &str,
-    state_machine_tx: Sender<StateMachine>,
+    state_machine_tx: Sender<Signals>,
     file_event: notify::Event,
 ) {
     file_event.paths.iter().for_each(|path| {
@@ -76,7 +76,9 @@ fn check_for_notes(
                                     }
                                 });
                             let (tx, rx) = channel::<Option<ActiveProcessEvent>>();
-                            state_machine_tx.send(StateMachine::CurrentApp(tx)).unwrap();
+                            state_machine_tx
+                                .send(Signals::CurrentApp(tx))
+                                .unwrap();
                             let process = rx
                                 .recv()
                                 .expect("main thread is alive")
@@ -95,7 +97,7 @@ fn check_for_notes(
                                             .collect();
                                         links.push(process.get_title().to_string());
                                         state_machine_tx
-                                            .send(StateMachine::NewNote(
+                                            .send(Signals::NewNote(
                                                 note.trim().to_string(),
                                                 links,
                                             ))
@@ -121,7 +123,7 @@ fn check_for_notes(
 
 fn act_on_event(
     comment_identifier: &str,
-    state_machine_tx: Sender<StateMachine>,
+    state_machine_tx: Sender<Signals>,
     file_event: notify::Event,
 ) {
     match file_event.kind {
@@ -149,7 +151,7 @@ fn path_includes_ignored_path(path: &PathBuf, ignore_paths: &Vec<String>) -> boo
 }
 
 fn create_caching_thread(
-    state_machine_tx: Sender<StateMachine>,
+    state_machine_tx: Sender<Signals>,
     notify_rx: Receiver<Result<notify::Event, notify::Error>>,
     data_path: PathBuf,
     comment_identifier: String,
@@ -185,7 +187,7 @@ pub struct FileGatherer {
 }
 
 impl FileGatherer {
-    pub fn new(state_machine_tx: Sender<StateMachine>, config: &Config) -> Self {
+    pub fn new(state_machine_tx: Sender<Signals>, config: &Config) -> Self {
         let (notify_tx, notify_rx) = create_notify_channel();
         let file_watcher_threads = create_file_watchers(config.watcher_paths.clone(), notify_tx);
 

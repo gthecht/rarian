@@ -11,7 +11,7 @@ use ratatui::{
 };
 use ulid::Ulid;
 
-use crate::{gatherer::app_gatherer::ActiveProcessEvent, StateMachine};
+use crate::{gatherer::app_gatherer::ActiveProcessEvent, Signals};
 
 pub enum InputMode {
     Normal,
@@ -19,14 +19,14 @@ pub enum InputMode {
 }
 
 pub struct InsertWindow {
-    state_machine_tx: Sender<StateMachine>,
+    state_machine_tx: Sender<Signals>,
     pub input: String,
     pub character_index: usize,
     pub editing_note: Option<Ulid>,
 }
 
 impl InsertWindow {
-    pub fn new(state_machine_tx: Sender<StateMachine>) -> InsertWindow {
+    pub fn new(state_machine_tx: Sender<Signals>) -> InsertWindow {
         InsertWindow {
             state_machine_tx,
             input: String::new(),
@@ -123,13 +123,11 @@ impl InsertWindow {
 
     fn new_note(&self) {
         let (tx, rx) = channel::<Option<ActiveProcessEvent>>();
-        self.state_machine_tx
-            .send(StateMachine::CurrentApp(tx))
-            .unwrap();
+        self.state_machine_tx.send(Signals::CurrentApp(tx)).unwrap();
         match rx.recv().expect("main thread is alive") {
             Some(current) => {
                 self.state_machine_tx
-                    .send(StateMachine::NewNote(
+                    .send(Signals::NewNote(
                         self.input.clone().trim().to_string(),
                         vec![current.get_title().to_string()],
                     ))
@@ -143,7 +141,7 @@ impl InsertWindow {
 
     fn edit_note(&self, note_id: Ulid) {
         self.state_machine_tx
-            .send(StateMachine::EditNote(
+            .send(Signals::EditNote(
                 note_id,
                 self.input.clone().trim().to_string(),
             ))

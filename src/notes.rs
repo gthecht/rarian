@@ -73,7 +73,7 @@ impl NoteTaker {
         self.notes.insert(note.id, note);
     }
 
-    pub fn get_app_notes(&self, link: &str) -> Vec<Note> {
+    pub fn get_linked_notes(&self, link: &str) -> Vec<Note> {
         let mut notes_vec: Vec<Note> = self
             .notes
             .values()
