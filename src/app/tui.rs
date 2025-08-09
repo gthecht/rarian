@@ -258,11 +258,11 @@ impl NotesWindow {
         match rx.recv().expect("main thread should be alive") {
             Some(current) => {
                 let title = current.get_title();
-                let (tx, rx) = channel::<Vec<Note>>();
+                let (tx, rx) = channel::<(Vec<Note>, Vec<Note>, Vec<Note>)>();
                 self.state_machine_tx
                     .send(Signals::GetLinkNotes(current.get_title().to_string(), tx))
                     .unwrap();
-                let app_notes = rx.recv().expect("main thread should be alive");
+                let app_notes = rx.recv().expect("main thread should be alive").0;
                 self.current_title = title.to_owned();
                 self.current_notes = app_notes.into_iter().collect();
             }

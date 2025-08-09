@@ -19,7 +19,7 @@ use ulid::Ulid;
 pub enum Signals {
     RecentApps(usize, Sender<Vec<ActiveProcessEvent>>),
     CurrentApp(Sender<Option<ActiveProcessEvent>>),
-    GetLinkNotes(String, Sender<Vec<Note>>),
+    GetLinkNotes(String, Sender<(Vec<Note>, Vec<Note>, Vec<Note>)>),
     NewNote(String, Vec<String>),
     ArchiveNote(Ulid),
     EditNote(Ulid, String),

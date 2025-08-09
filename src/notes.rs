@@ -26,6 +26,10 @@ impl Link {
     }
 }
 
+fn link_distance(_link: &Link, _link_str: &str) -> f64 {
+    0.0
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Note {
     pub id: Ulid,
@@ -73,17 +77,23 @@ impl NoteTaker {
         self.notes.insert(note.id, note);
     }
 
-    pub fn get_linked_notes(&self, link: &str) -> Vec<Note> {
-        let mut notes_vec: Vec<Note> = self
-            .notes
-            .values()
-            .filter(|note| {
-                (note.links.iter().any(|l| l.link == link)) && (note.status == NoteStatus::Active)
-            })
-            .cloned()
-            .collect();
-        notes_vec.sort_by(|a, b| b.creation_date.cmp(&a.creation_date));
-        notes_vec
+    pub fn get_linked_notes(&self, link: &str) -> (Vec<Note>, Vec<Note>, Vec<Note>) {
+        let mut linked_notes: Vec<Note> = Vec::new();
+        let mut archived_linked_notes: Vec<Note> = Vec::new();
+        let mut related_notes: Vec<Note> = Vec::new();
+        self.notes.values().for_each(|note| {
+            if note.links.iter().any(|l| l.link == link) {
+                if note.status == NoteStatus::Active {
+                    linked_notes.push(note.clone());
+                } else if note.status == NoteStatus::Archived {
+                    archived_linked_notes.push(note.clone());
+                }
+            } else if note.links.iter().any(|l| link_distance(l, link) > 0.5) {
+                related_notes.push(note.clone());
+            }
+        });
+        linked_notes.sort_by(|a, b| b.creation_date.cmp(&a.creation_date));
+        (linked_notes, archived_linked_notes, related_notes)
     }
 
     pub fn archive_note(&mut self, note_id: &Ulid) {
